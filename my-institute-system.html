@@ -656,8 +656,9 @@ const afterLogin = async () => {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app-shell').style.display = '';
   applyRoleUI();
-  await init();
+  await init(); // loads all data, runs monthly reset, calls renderAll()
   if (isAdmin()) refreshBellCount();
+  // showPage re-renders with loaded data
   showPage(isAdmin() ? 'dashboard' : 'mystudents');
 };
 
@@ -1378,14 +1379,13 @@ const submitAttendance = async () => {
   const note = document.getElementById('attendance-note').value.trim();
   if (!hours || hours <= 0) return notify('Enter valid hours', false);
   const stu = students.find(s => s.id === sid);
-  const teacher = teachers.find(t => t.id === currentUser.teacherId);
-  if (!stu || !teacher) return notify('Student not found', false);
+  if (!stu) return notify('Student not found', false);
 
   // Log hours immediately to student record
   students = students.map(s => s.id === sid ? {...s, hoursUsed: (s.hoursUsed||0) + hours} : s);
   persist();
 
-  // Save attendance log entry (unseen by admin)
+  // Save attendance log entry
   try {
     await sbFetch('attendance_log', {
       method: 'POST',
@@ -1393,7 +1393,7 @@ const submitAttendance = async () => {
         id: uid(),
         student_id: sid,
         student_name: stu.name,
-        teacher_id: currentUser.teacherId,
+        teacher_id: currentUser.teacherId || null,
         teacher_name: currentUser.displayName,
         hours,
         note,
@@ -1401,8 +1401,8 @@ const submitAttendance = async () => {
         seen_by_admin: false
       }])
     });
-    attendanceCache = null; // invalidate admin cache
-  } catch(e) { notify('⚠️ Attendance saved locally but could not notify admin: ' + e.message, false); }
+    attendanceCache = null;
+  } catch(e) { notify('⚠️ ' + e.message, false); }
 
   closeAttendanceModal();
   notify(`✅ ${hours}h logged for ${stu.name}`);
@@ -1544,7 +1544,12 @@ const renderMyStudents = () => {
   const el = document.getElementById('mystudents-list');
   if (!el || !currentUser) return;
   const myStudents = students.filter(s=>s.teacherId===currentUser.teacherId).sort((a,b)=>a.name.localeCompare(b.name));
-  if (!myStudents.length) { el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">No students assigned yet.</div>'; return; }
+  if (!myStudents.length) {
+    el.innerHTML=`<div class="card muted" style="text-align:center;padding:40px">
+      No students found.<br><span class="f12">teacherId: ${currentUser.teacherId} | total students: ${students.length}</span>
+    </div>`;
+    return;
+  }
   el.innerHTML = myStudents.map(s=>`
     <div class="card student-card mb12">
       <div class="flex justify-between items-center flex-wrap gap8">
