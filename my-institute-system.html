@@ -553,6 +553,19 @@ const sbFetch = async (path, options={}) => {
 const sbSelect = (table, query='') => sbFetch(`${table}?select=*${query}`);
 // Full replace of a table's contents: delete all rows, then bulk insert current in-memory state.
 // Simple and reliable for a single-user app with modest data volume.
+const sbUpsert = async (table, rows, mapFn, pkCol='id') => {
+  if (!rows.length) return;
+  await sbFetch(`${table}?on_conflict=${pkCol}`, {
+    method: 'POST',
+    headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(rows.map(mapFn))
+  });
+};
+
+const sbDelete = async (table, pkCol, id) => {
+  await sbFetch(`${table}?${pkCol}=eq.${encodeURIComponent(id)}`, { method:'DELETE' });
+};
+
 const sbReplaceAll = async (table, rows, mapFn, pkCol='id') => {
   await sbFetch(`${table}?${pkCol}=neq.__none__`, { method:'DELETE' });
   if (!rows.length) return;
@@ -682,8 +695,8 @@ let students = [];
 
 const persist = async () => {
   try {
-    await sbReplaceAll('teachers', teachers, teacherToDb);
-    await sbReplaceAll('students', students, studentToDb);
+    await sbUpsert('teachers', teachers, teacherToDb);
+    await sbUpsert('students', students, studentToDb);
   } catch(e) { notify('⚠️ Could not save to database: '+e.message, false); }
 };
 
@@ -913,7 +926,8 @@ const deleteTeacher = tid => {
   if (teacherStudents(tid).length>0) return notify('Remove teacher\'s students first',false);
   const t = teachers.find(t=>t.id===tid);
   teachers=teachers.filter(t=>t.id!==tid);
-  persist(); notify('Teacher removed'); renderAll();
+  sbDelete('teachers','id',tid);
+  notify('Teacher removed'); renderAll();
   logAction('Removed teacher', t?.name||tid);
 };
 
@@ -938,7 +952,8 @@ const deleteStudent = sid => {
   if (!confirm('Remove this student?')) return;
   const s = students.find(s=>s.id===sid);
   students=students.filter(s=>s.id!==sid);
-  persist(); notify('Student removed'); renderAll();
+  sbDelete('students','id',sid);
+  notify('Student removed'); renderAll();
   logAction('Removed student', s?.name||sid);
 };
 
@@ -1625,7 +1640,7 @@ const renderAll=()=>{
 let schedules = [];
 
 const persistSchedules = async () => {
-  try { await sbReplaceAll('schedules', schedules, scheduleToDb); }
+  try { await sbUpsert('schedules', schedules, scheduleToDb); }
   catch(e) { notify('⚠️ Could not save schedules: '+e.message, false); }
 };
 
@@ -1860,8 +1875,9 @@ const deleteStudentSchedule = () => {
   const sid = document.getElementById('stu-sched-student').value;
   if (!sid || !confirm('Remove this student\'s schedule?')) return;
   const stu = students.find(s=>s.id===sid);
+  const pkg = schedules.find(p=>p.studentId===sid);
   schedules = schedules.filter(p=>p.studentId!==sid);
-  persistSchedules();
+  if (pkg) sbDelete('schedules','id',pkg.id);
   notify('Schedule removed');
   closeStudentScheduleModal();
   renderSchedule();
