@@ -1,0 +1,2176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>MY Institute – Management System</title>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080c10;--surface:#0e1521;--border:#1e2d3d;--text:#dde4ec;--muted:#6b7c93;
+  --gold:#c9a84c;--gold2:#a87c2a;--green:#5dba7e;--green-bg:#0f2d1a;--green-border:#2a6b40;
+  --red:#f07070;--red-bg:#2d1418;--red-border:#6b2030;--blue:#58a6ff;
+}
+body{background:var(--bg);color:var(--text);font-family:'EB Garamond',serif;min-height:100vh}
+input,select{background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:14px;padding:10px 14px;width:100%;outline:none;transition:border .2s}
+input:focus,select:focus{border-color:var(--gold)}
+input::placeholder{color:var(--muted)}
+button{cursor:pointer;font-family:inherit;border:none;border-radius:8px;font-size:13px;font-weight:600;padding:8px 16px;transition:opacity .15s}
+button:hover{opacity:.85}
+.btn-gold{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#080c10}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--muted)}
+.btn-danger{background:var(--red-bg);border:1px solid var(--red-border);color:var(--red)}
+.btn-green{background:var(--green-bg);border:1px solid var(--green-border);color:var(--green)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px}
+.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+.badge-green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
+.badge-amber{background:#2d220a;color:var(--gold);border:1px solid #6b5020}
+.badge-red{background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)}
+.badge-blue{background:#0d1f35;color:var(--blue);border:1px solid #1e3d6b}
+.label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;display:block}
+#header{background:linear-gradient(180deg,#0e1521,var(--bg));border-bottom:1px solid var(--border);padding:16px 28px;display:flex;align-items:center;justify-content:space-between}
+.logo-icon{width:38px;height:38px;background:linear-gradient(135deg,var(--gold),var(--gold2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.logo-title{font-size:18px;font-weight:700;color:var(--gold)}
+.logo-sub{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+#nav{display:flex;gap:4px;background:#0e1521;border-bottom:1px solid var(--border);padding:0 28px;overflow-x:auto}
+.nav-btn{padding:13px 18px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;font-family:inherit;font-size:13px;white-space:nowrap;transition:all .2s;font-weight:400}
+.nav-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
+#content{padding:24px 28px;max-width:1040px;margin:0 auto}
+.page{display:none}.page.active{display:block}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:20px}
+.student-card{margin-bottom:12px;position:relative}
+.progress-bar-bg{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin:10px 0}
+.progress-bar-fill{height:100%;border-radius:3px;transition:width .4s}
+.hours-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.small-input{width:64px!important;padding:6px 8px!important}
+.alert-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}
+.student-pill{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 12px;font-size:13px;display:inline-block;margin:3px}
+#modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;align-items:center;justify-content:center}
+#modal-overlay.open{display:flex}
+#modal-box{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;width:360px;max-width:90vw}
+#toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:10px;font-size:14px;max-width:320px;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:9999;display:none;transition:opacity .3s}
+#toast.show{display:block}
+#toast.ok{background:var(--green-bg);border:1px solid var(--green-border);color:var(--green)}
+#toast.err{background:var(--red-bg);border:1px solid var(--red-border);color:var(--red)}
+.salary-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px}
+.form-group{margin-bottom:14px}
+.flex{display:flex}.flex-wrap{flex-wrap:wrap}.gap8{gap:8px}.gap12{gap:12px}.gap16{gap:16px}
+.items-center{align-items:center}.justify-between{justify-content:space-between}.flex1{flex:1}
+.mt8{margin-top:8px}.mt12{margin-top:12px}.mt16{margin-top:16px}.mt20{margin-top:20px}
+.mb8{margin-bottom:8px}.mb12{margin-bottom:12px}.mb16{margin-bottom:16px}.mb20{margin-bottom:20px}
+.mono{font-family:'JetBrains Mono',monospace;letter-spacing:.5px}
+.muted{color:var(--muted)}.gold{color:var(--gold)}.green{color:var(--green)}.red{color:var(--red)}
+.bold{font-weight:700}.f12{font-size:12px}.f13{font-size:13px}.f15{font-size:15px}.f18{font-size:18px}
+.code-pill{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 8px}
+.week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;min-width:700px}
+.week-col{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.week-col-head{padding:8px 10px;text-align:center;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);color:var(--gold);background:rgba(201,168,76,.07)}
+.week-col-body{padding:6px;min-height:120px}
+.session-chip{border-radius:7px;padding:7px 9px;margin-bottom:6px;cursor:pointer;transition:opacity .15s;font-size:12px;border:1px solid transparent}
+.session-chip:hover{opacity:.8}
+.session-chip .chip-time{font-size:11px;opacity:.75;font-family:'JetBrains Mono',monospace}
+.session-chip .chip-name{font-weight:700;margin-bottom:2px}
+.chip-colors{--c1:#1a3a5c;--b1:#2a5a8c;--t1:#58a6ff}
+.schedule-overflow{overflow-x:auto}
+.teacher-schedule-card{margin-bottom:16px}
+.sched-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.sched-day-badge{min-width:90px;font-weight:600;font-size:12px;color:var(--gold)}
+
+.modal-base{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;width:440px;max-width:93vw;max-height:90vh;overflow-y:auto}
+.overlay-base{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;align-items:center;justify-content:center}
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px">
+  <div class="card" style="width:360px;max-width:92vw">
+    <div class="flex gap12 items-center mb20" style="justify-content:center">
+      <div class="logo-icon">🌙</div>
+      <div>
+        <div class="logo-title">MY Institute</div>
+        <div class="logo-sub">Management System</div>
+      </div>
+    </div>
+    <div class="form-group"><label class="label">Username</label><input id="login-username" placeholder="username" onkeydown="if(event.key==='Enter')document.getElementById('login-password').focus()"/></div>
+    <div class="form-group"><label class="label">Password</label><input id="login-password" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/></div>
+    <div id="login-error" class="f12 red mb12" style="display:none">Invalid username or password.</div>
+    <button class="btn-gold" style="width:100%" onclick="doLogin()">Log In</button>
+  </div>
+</div>
+
+<div id="app-shell" style="display:none">
+<div id="header">
+  <div class="flex gap12 items-center">
+    <div class="logo-icon">🌙</div>
+    <div>
+      <div class="logo-title">MY Institute</div>
+      <div class="logo-sub">Management System</div>
+    </div>
+  </div>
+  <div class="flex gap12 items-center">
+    <div class="f12 muted" id="today-date"></div>
+    <div id="notif-bell" style="display:none;position:relative;cursor:pointer" onclick="showPage('attendance')">
+      <span style="font-size:20px">🔔</span>
+      <span id="notif-count" style="display:none;position:absolute;top:-6px;right:-8px;background:var(--red);color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 5px;min-width:16px;text-align:center"></span>
+    </div>
+    <div class="f12" id="current-user-pill" style="border-left:1px solid var(--border);padding-left:12px"></div>
+    <button class="btn-ghost f12" style="padding:6px 12px" onclick="doLogout()">🚪 Log Out</button>
+  </div>
+</div>
+
+<div id="nav">
+  <button class="nav-btn active" id="nav-dashboard" onclick="showPage('dashboard')">📊 Dashboard</button>
+  <button class="nav-btn" id="nav-teachers" onclick="showPage('teachers')">👨‍🏫 Teachers</button>
+  <button class="nav-btn" id="nav-students" onclick="showPage('students')">📚 Students</button>
+  <button class="nav-btn" id="nav-salary" onclick="showPage('salary')">💵 Salaries</button>
+  <button class="nav-btn" id="nav-schedule" onclick="showPage('schedule')">📅 Schedules</button>
+  <button class="nav-btn" id="nav-history" onclick="showPage('history')">🗂️ History</button>
+  <button class="nav-btn" id="nav-auditlog" onclick="showPage('auditlog')">📋 Activity Log</button>
+  <button class="nav-btn" id="nav-attendance" onclick="showPage('attendance')">✅ Attendance</button>
+  <button class="nav-btn" id="nav-mystudents" onclick="showPage('mystudents')" style="display:none">📚 My Students</button>
+  <button class="nav-btn" id="nav-myschedule" onclick="showPage('myschedule')" style="display:none">📅 My Schedule</button>
+  <button class="nav-btn" id="nav-mysalary" onclick="showPage('mysalary')" style="display:none">💵 My Salary</button>
+</div>
+
+<div id="content">
+<div id="loading-state" class="card" style="text-align:center;padding:60px 20px;margin-bottom:20px">
+  <div class="f15 gold bold">⏳ Loading your data…</div>
+  <div class="f12 muted mt8">Connecting to the database</div>
+</div>
+
+  <!-- DASHBOARD -->
+  <div class="page active" id="page-dashboard">
+    <div class="stats-grid" id="stats-grid"></div>
+    <div id="low-hours-alert"></div>
+    <div class="card mt16" id="teachers-overview"></div>
+  </div>
+
+  <!-- TEACHERS -->
+  <div class="page" id="page-teachers">
+    <div class="flex justify-between items-center mb16 flex-wrap gap8">
+      <div class="f18 bold" id="teachers-title">Teachers</div>
+      <div class="flex gap8 flex-wrap">
+        <button class="btn-ghost" onclick="manualReset()" style="border-color:var(--red-border);color:var(--red)">🔄 Reset Hours</button>
+        <button class="btn-gold" onclick="showPage('addTeacher')">+ Add Teacher</button>
+      </div>
+    </div>
+    <div class="flex gap8 mb16 flex-wrap">
+      <input id="teacher-search-input" placeholder="Search teacher..." oninput="renderTeachers()" style="max-width:220px"/>
+    </div>
+    <div id="teachers-list"></div>
+  </div>
+
+  <!-- STUDENTS -->
+  <div class="page" id="page-students">
+    <div class="flex justify-between items-center mb16 flex-wrap gap8">
+      <div class="f18 bold" id="students-title">Students</div>
+      <div class="flex gap8 flex-wrap">
+        <button class="btn-green" onclick="openPromoModal()">🎁 Apply Promo Code</button>
+        <button class="btn-gold" onclick="showPage('addStudent')">+ Add Student</button>
+      </div>
+    </div>
+    <div class="flex gap8 mb16 flex-wrap">
+      <input id="search-input" placeholder="Search student..." oninput="renderStudents()" style="max-width:200px"/>
+      <select id="filter-teacher" onchange="renderStudents()" style="max-width:200px">
+        <option value="all">All Teachers</option>
+      </select>
+    </div>
+    <div id="students-list"></div>
+  </div>
+
+  <!-- SALARY -->
+  <div class="page" id="page-salary">
+    <div class="flex justify-between items-center mb16 flex-wrap gap8">
+      <div class="f18 bold" id="salary-title">Salary Calculator</div>
+      <div class="flex gap8 items-center flex-wrap">
+        <label class="label" style="margin:0;white-space:nowrap">💱 USD → EGP</label>
+        <input id="usd-rate" type="number" min="1" step="0.5" placeholder="50" style="width:90px"
+          oninput="renderSalary()" title="Exchange rate: 1 USD = ? EGP"/>
+      </div>
+    </div>
+    <div class="flex gap8 mb16 flex-wrap">
+      <input id="salary-search-input" placeholder="Search teacher..." oninput="renderSalary()" style="max-width:220px"/>
+    </div>
+    <div id="salary-list"></div>
+    <div class="card mt16" id="salary-total"></div>
+  </div>
+
+  <!-- ADD TEACHER -->
+  <div class="page" id="page-addTeacher">
+    <div class="f18 bold mb20">Add New Teacher</div>
+    <div class="card" style="max-width:440px">
+      <div class="form-group"><label class="label">Name *</label><input id="new-teacher-name" placeholder="Sheikh Omar"/></div>
+      <div class="form-group"><label class="label">Email</label><input id="new-teacher-email" placeholder="omar@email.com"/></div>
+      <div class="flex gap8 mt8">
+        <button class="btn-gold flex1" onclick="addTeacher()">Add Teacher</button>
+        <button class="btn-ghost" onclick="showPage('teachers')">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD STUDENT -->
+  <div class="page" id="page-addStudent">
+    <div class="f18 bold mb20">Add New Student</div>
+    <div class="card" style="max-width:440px">
+      <div class="form-group"><label class="label">Name *</label><input id="new-student-name" placeholder="Ahmed Ali"/></div>
+      <div class="form-group"><label class="label">Email</label><input id="new-student-email" placeholder="ahmed@email.com"/></div>
+      <div class="form-group"><label class="label">Assign Teacher *</label>
+        <select id="new-student-teacher"><option value="">Select teacher...</option></select>
+      </div>
+      <div class="form-group"><label class="label">Hours Purchased</label><input id="new-student-hours" type="number" min="1" step="0.5" placeholder="4"/></div>
+      <div class="form-group">
+        <label class="label">Student Type</label>
+        <div class="flex gap12 items-center" style="padding:10px 0">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
+            <input type="radio" name="new-student-type" id="new-student-type-regular" value="regular" checked style="width:auto;accent-color:var(--gold)"/>
+            Regular
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
+            <input type="radio" name="new-student-type" id="new-student-type-trial" value="trial" style="width:auto;accent-color:var(--gold)"/>
+            <span class="badge badge-amber">Trial 🎯</span>
+          </label>
+        </div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--muted);margin-bottom:16px">
+        🔑 A unique promo code will be auto-generated for this student
+      </div>
+      <div class="flex gap8">
+        <button class="btn-gold flex1" onclick="addStudent()">Add Student</button>
+        <button class="btn-ghost" onclick="showPage('students')">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCHEDULE -->
+  <div class="page" id="page-schedule">
+    <div class="flex justify-between items-center mb16 flex-wrap gap8">
+      <div class="f18 bold" id="schedule-title">Schedules</div>
+      <div class="flex gap8 flex-wrap">
+        <select id="schedule-view" onchange="renderSchedule()" style="max-width:160px">
+          <option value="week">Week View</option>
+          <option value="student">By Student</option>
+          <option value="teacher">By Teacher</option>
+        </select>
+        <button class="btn-gold" onclick="openStudentScheduleModal()">+ Add Student Schedule</button>
+      </div>
+    </div>
+    <div id="schedule-conflicts-banner" style="display:none;margin-bottom:14px;padding:12px 16px;background:var(--red-bg);border:1px solid var(--red-border);border-radius:10px;color:var(--red);font-size:13px"></div>
+    <div id="schedule-week-view"><div id="week-grid"></div></div>
+    <div id="schedule-student-view" style="display:none"><div id="student-schedule-list"></div></div>
+    <div id="schedule-teacher-view" style="display:none"><div id="teacher-schedule-list"></div></div>
+  </div>
+
+  <!-- HISTORY -->
+  <div class="page" id="page-history">
+    <div class="flex justify-between items-center mb16 flex-wrap gap8">
+      <div class="f18 bold" id="history-title">History</div>
+      <div class="flex gap8 flex-wrap">
+        <select id="history-month-select" onchange="renderHistory()" style="max-width:200px"></select>
+      </div>
+    </div>
+    <div id="history-content"></div>
+  </div>
+
+  <!-- AUDIT LOG -->
+  <div class="page" id="page-auditlog">
+    <div class="flex justify-between items-center mb16 flex-wrap gap8">
+      <div class="f18 bold">Activity Log</div>
+      <div class="flex gap8 flex-wrap">
+        <input id="auditlog-search-input" placeholder="Search by user or action..." oninput="renderAuditLog()" style="max-width:240px"/>
+        <button class="btn-ghost" onclick="renderAuditLog(true)">🔄 Refresh</button>
+      </div>
+    </div>
+    <div id="auditlog-content"></div>
+  </div>
+
+  <!-- ATTENDANCE LOG (admin view) -->
+  <div class="page" id="page-attendance">
+    <div class="flex justify-between items-center mb16 flex-wrap gap8">
+      <div class="f18 bold">✅ Attendance Log</div>
+      <button class="btn-ghost" onclick="loadAttendance(true)">🔄 Refresh</button>
+    </div>
+    <div id="attendance-content"></div>
+  </div>
+
+  <!-- TEACHER: MY STUDENTS (names only) -->
+  <div class="page" id="page-mystudents">
+    <div class="f18 bold mb16">My Students</div>
+    <div id="mystudents-list"></div>
+  </div>
+
+  <!-- TEACHER: MY SCHEDULE -->
+  <div class="page" id="page-myschedule">
+    <div class="f18 bold mb16">My Schedule</div>
+    <div id="trial-alert"></div>
+    <div id="myschedule-list"></div>
+  </div>
+
+  <!-- TEACHER: MY SALARY -->
+  <div class="page" id="page-mysalary">
+    <div class="f18 bold mb16">My Salary</div>
+    <div id="mysalary-content"></div>
+  </div>
+
+</div><!-- /content -->
+
+<!-- STUDENT SCHEDULE MODAL (add/edit full package) -->
+<div id="stu-sched-overlay" onclick="closeStudentScheduleModal()" class="overlay-base">
+  <div onclick="event.stopPropagation()" class="modal-base" style="width:500px">
+    <div class="f15 bold gold mb4" id="stu-sched-title">📅 Student Schedule</div>
+    <div class="f12 muted mb16">Choose the student's days and set the time for each day</div>
+    <input type="hidden" id="stu-sched-sid"/>
+
+    <div class="form-group">
+      <label class="label">Student *</label>
+      <select id="stu-sched-student" onchange="onScheduleStudentChange()"></select>
+    </div>
+    <div class="form-group">
+      <label class="label">Subject / Note</label>
+      <input id="stu-sched-subject" placeholder="e.g. Quran, Arabic, Math..."/>
+    </div>
+
+    <div class="flex gap8 mb12 mt4">
+      <div class="flex1">
+        <label class="label">Default Duration</label>
+        <select id="stu-sched-default-dur" onchange="applyDefaultDuration()" style="font-size:13px">
+          <option value="30">30 min</option>
+          <option value="60" selected>60 min</option>
+          <option value="90">90 min</option>
+          <option value="120">120 min</option>
+          <option value="150">150 min</option>
+          <option value="180">180 min</option>
+        </select>
+      </div>
+      <div class="flex1 flex items-center" style="padding-top:18px">
+        <span class="f12 muted">Applied to all checked days</span>
+      </div>
+    </div>
+    <div class="label mb8">Select Days &amp; Start Time</div>
+    <div id="days-selector" style="display:flex;flex-direction:column;gap:8px"></div>
+    <div id="conflict-alert-modal" style="display:none;margin-top:12px;padding:10px 14px;background:var(--red-bg);border:1px solid var(--red-border);border-radius:8px;color:var(--red);font-size:12px;line-height:1.6"></div>
+
+    <div class="flex gap8 mt16">
+      <button class="btn-gold flex1" onclick="saveStudentSchedule()">💾 Save Schedule</button>
+      <button id="stu-sched-delete-btn" class="btn-danger" onclick="deleteStudentSchedule()" style="display:none">🗑 Delete</button>
+      <button class="btn-ghost" onclick="closeStudentScheduleModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT SINGLE SESSION MODAL -->
+<div id="edit-sess-overlay" onclick="closeEditSess()" class="overlay-base">
+  <div onclick="event.stopPropagation()" class="modal-base" style="width:380px">
+    <div class="f15 bold gold mb4">✏️ Edit Session</div>
+    <div class="f13 muted mb16" id="edit-sess-label">Day</div>
+    <input type="hidden" id="edit-sess-pkg-sid"/>
+    <input type="hidden" id="edit-sess-day"/>
+    <div class="flex gap8 mb12">
+      <div class="flex1">
+        <label class="label">Start Time</label>
+        <input id="edit-sess-start" type="time" oninput="previewEditEnd()"/>
+      </div>
+      <div class="flex1">
+        <label class="label">Duration</label>
+        <select id="edit-sess-dur" onchange="previewEditEnd()" style="font-size:13px">
+          <option value="30">30 min</option>
+          <option value="60">60 min</option>
+          <option value="90">90 min</option>
+          <option value="120">120 min</option>
+          <option value="150">150 min</option>
+          <option value="180">180 min</option>
+        </select>
+      </div>
+    </div>
+    <div class="f12 muted mb12" id="edit-sess-end-preview" style="padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px">Ends at: —</div>
+    <div class="form-group">
+      <label class="label">Subject / Note</label>
+      <input id="edit-sess-subject" placeholder="e.g. Quran, Arabic, Math..."/>
+    </div>
+    <div id="edit-conflict-alert" style="display:none;padding:8px 12px;background:var(--red-bg);border:1px solid var(--red-border);border-radius:6px;color:var(--red);font-size:12px;margin-bottom:10px"></div>
+    <div class="flex gap8 mt8">
+      <button class="btn-gold flex1" onclick="saveEditSess()">💾 Save</button>
+      <button class="btn-danger" onclick="removeEditSessDay()">🗑 Remove Day</button>
+      <button class="btn-ghost" onclick="closeEditSess()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROMO MODAL -->
+<div id="modal-overlay" onclick="closeModal()">
+  <div id="modal-box" onclick="event.stopPropagation()">
+    <div class="f15 bold gold mb16">🎁 Apply Referral Code</div>
+    <div class="form-group"><label class="label">New Student Name *</label><input id="promo-new-name" placeholder="Ahmed Ali"/></div>
+    <div class="form-group"><label class="label">Promo Code Used *</label>
+      <input id="promo-code" placeholder="MY-OMAR123" class="mono gold" oninput="this.value=this.value.toUpperCase()"/>
+    </div>
+    <div class="flex gap8 mt8">
+      <button class="btn-gold flex1" onclick="applyPromo()">Apply & Give +1h</button>
+      <button class="btn-ghost" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- WHATSAPP STUDENT MSG MODAL -->
+<div id="msg-overlay" onclick="closeMsgModal()" class="overlay-base">
+  <div onclick="event.stopPropagation()" class="modal-base">
+    <div class="f15 bold gold mb12">📋 WhatsApp Session Report – Student</div>
+    <textarea id="msg-preview" readonly style="width:100%;height:180px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:13px;padding:12px;resize:none;line-height:1.7"></textarea>
+    <div class="flex gap8 mt12">
+      <button class="btn-gold flex1" id="copy-btn" onclick="doCopy('msg-preview','copy-btn')">📋 Copy Message</button>
+      <button class="btn-ghost" onclick="closeMsgModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- SALARY REPORT MODAL (teacher) -->
+<div id="salary-report-overlay" onclick="closeSalaryReport()" class="overlay-base">
+  <div onclick="event.stopPropagation()" class="modal-base" style="width:500px">
+    <div class="f15 bold gold mb12">💵 Salary Report – WhatsApp Ready</div>
+    <textarea id="salary-report-preview" readonly style="width:100%;height:320px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:12px;resize:none;line-height:1.8"></textarea>
+    <div class="flex gap8 mt12">
+      <button class="btn-gold flex1" id="salary-copy-btn" onclick="doCopy('salary-report-preview','salary-copy-btn')">📋 Copy Report</button>
+      <button class="btn-ghost" onclick="closeSalaryReport()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT TEACHER MODAL -->
+<div id="edit-teacher-overlay" onclick="closeEditTeacher()" class="overlay-base">
+  <div onclick="event.stopPropagation()" class="modal-base" style="width:400px">
+    <div class="f15 bold gold mb16">✏️ Edit Teacher</div>
+    <input type="hidden" id="edit-teacher-id"/>
+    <div class="form-group"><label class="label">Name *</label><input id="edit-teacher-name" placeholder="Teacher name"/></div>
+    <div class="form-group"><label class="label">Email</label><input id="edit-teacher-email" placeholder="email@example.com"/></div>
+    <div class="form-group"><label class="label">Joined Date</label><input id="edit-teacher-joined" placeholder="01/01/2024"/></div>
+    <div class="form-group">
+      <label class="label">Hourly Rate ($ per hour)</label>
+      <input id="edit-teacher-rate" type="number" min="0" step="0.5" placeholder="5"/>
+    </div>
+    <div class="form-group">
+      <label class="label">Hours (this month – manual override)</label>
+      <input id="edit-teacher-hours" type="number" min="0" step="0.5" placeholder="0"/>
+      <div class="f12 muted mt8">ℹ️ Overrides the auto-calculated hours from student logs</div>
+    </div>
+    <div class="form-group">
+      <label class="label">Bonus / Extra Pay ($)</label>
+      <input id="edit-teacher-bonus" type="number" min="0" step="0.5" placeholder="0"/>
+    </div>
+    <div class="form-group">
+      <label class="label">Bonus Note (reason)</label>
+      <input id="edit-teacher-bonus-note" placeholder="e.g. Extra marking, cover lesson"/>
+    </div>
+    <div class="flex gap8 mt8">
+      <button class="btn-gold flex1" onclick="saveEditTeacher()">💾 Save</button>
+      <button class="btn-ghost" onclick="closeEditTeacher()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT STUDENT MODAL -->
+<div id="edit-student-overlay" onclick="closeEditStudent()" class="overlay-base">
+  <div onclick="event.stopPropagation()" class="modal-base">
+    <div class="f15 bold gold mb16">✏️ Edit Student</div>
+    <input type="hidden" id="edit-student-id"/>
+    <div class="form-group"><label class="label">Name *</label><input id="edit-student-name" placeholder="Student name"/></div>
+    <div class="form-group"><label class="label">Email</label><input id="edit-student-email" placeholder="email@example.com"/></div>
+    <div class="form-group"><label class="label">Assign Teacher</label>
+      <select id="edit-student-teacher"></select>
+    </div>
+    <div class="form-group"><label class="label">Hours Purchased (Bag)</label><input id="edit-student-bought" type="number" min="0" step="0.5" placeholder="8"/></div>
+    <div class="form-group"><label class="label">Hours Used (This Month)</label><input id="edit-student-used" type="number" min="0" step="0.5" placeholder="0"/></div>
+    <div class="form-group"><label class="label">Promo Code</label><input id="edit-student-code" class="mono" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()" placeholder="MY-XXXX123"/></div>
+    <div class="form-group"><label class="label">Joined Date</label><input id="edit-student-joined" placeholder="01/01/2024"/></div>
+    <div class="flex gap8 mt8">
+      <button class="btn-gold flex1" onclick="saveEditStudent()">💾 Save</button>
+      <button class="btn-ghost" onclick="closeEditStudent()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+</div><!-- /app-shell -->
+
+<!-- ATTENDANCE LOG MODAL - outside app-shell to avoid display:none blocking -->
+<div id="attendance-overlay" onclick="closeAttendanceModal()" class="overlay-base">
+  <div onclick="event.stopPropagation()" class="modal-base" style="width:380px">
+    <div class="f15 bold gold mb4">✅ Log Attendance</div>
+    <div class="f12 muted mb16" id="attendance-student-name-display"></div>
+    <input type="hidden" id="attendance-sid"/>
+    <div class="form-group">
+      <label class="label">Hours *</label>
+      <input id="attendance-hours" type="number" min="0.5" step="0.5" placeholder="1"/>
+    </div>
+    <div class="form-group">
+      <label class="label">Note (optional)</label>
+      <input id="attendance-note" placeholder="e.g. Completed Surah Al-Baqarah"/>
+    </div>
+    <div class="flex gap8 mt8">
+      <button class="btn-gold flex1" onclick="submitAttendance()">Submit</button>
+      <button class="btn-ghost" onclick="closeAttendanceModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Constants & Storage ───────────────────────────────────────────────────────
+const DEFAULT_TEACHER_RATE = 5;
+const STUDENT_RATE = 7;
+const INSTITUTE_NAME = 'MY Institute';
+const INSTITUTE_WEBSITE = 'my-institute.com';
+const INSTITUTE_WHATSAPP = '+20 XXX XXX XXXX'; // TODO: replace with your WhatsApp number
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+const genCode = name => 'MY-' + name.trim().toUpperCase().replace(/\s+/g,'').slice(0,4) + Math.floor(100+Math.random()*900);
+
+// ── Supabase Config ───────────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://jleouotjbmfesdcreeno.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_orR_yLABSyXXXtoZ_peyBA_hN2ju6sn';
+
+const sbHeaders = {
+  'apikey': SUPABASE_KEY,
+  'Authorization': 'Bearer ' + SUPABASE_KEY,
+  'Content-Type': 'application/json',
+  'Prefer': 'return=minimal'
+};
+
+const sbFetch = async (path, options={}) => {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    ...options,
+    headers: { ...sbHeaders, ...(options.headers||{}) }
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(()=> '');
+    throw new Error(`Supabase error (${res.status}): ${errText}`);
+  }
+  if (res.status === 204) return null;
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+};
+
+const sbSelect = (table, query='') => sbFetch(`${table}?select=*${query}`);
+// Full replace of a table's contents: delete all rows, then bulk insert current in-memory state.
+// Simple and reliable for a single-user app with modest data volume.
+const sbReplaceAll = async (table, rows, mapFn, pkCol='id') => {
+  await sbFetch(`${table}?${pkCol}=neq.__none__`, { method:'DELETE' });
+  if (!rows.length) return;
+  await sbFetch(table, { method:'POST', body: JSON.stringify(rows.map(mapFn)) });
+};
+
+// ── Field mapping (camelCase in-app ⇄ snake_case in DB) ────────────────────────
+const teacherToDb = t => ({
+  id:t.id, name:t.name, email:t.email||'', joined_at:t.joinedAt||'',
+  rate:t.rate??DEFAULT_TEACHER_RATE, hours_override:(t.hoursOverride===''||t.hoursOverride===undefined)?null:t.hoursOverride,
+  bonus:t.bonus||0, bonus_note:t.bonusNote||''
+});
+const teacherFromDb = r => ({
+  id:r.id, name:r.name, email:r.email||'', joinedAt:r.joined_at||'',
+  rate:r.rate??DEFAULT_TEACHER_RATE, hoursOverride:r.hours_override,
+  bonus:r.bonus||0, bonusNote:r.bonus_note||''
+});
+const studentToDb = s => ({
+  id:s.id, name:s.name, email:s.email||'', teacher_id:s.teacherId||null,
+  hours_bought:s.hoursBought||0, hours_used:s.hoursUsed||0, code:s.code||'', joined_at:s.joinedAt||'',
+  is_trial: s.isTrial||false
+});
+const studentFromDb = r => ({
+  id:r.id, name:r.name, email:r.email||'', teacherId:r.teacher_id||'',
+  hoursBought:r.hours_bought||0, hoursUsed:r.hours_used||0, code:r.code||'', joinedAt:r.joined_at||'',
+  isTrial: r.is_trial||false
+});
+const scheduleToDb = p => ({ id:p.id, student_id:p.studentId||null, subject:p.subject||'', days:p.days||[] });
+const scheduleFromDb = r => ({ id:r.id, studentId:r.student_id||'', subject:r.subject||'', days:r.days||[] });
+const historyToDb = h => ({
+  key:h.key, label:h.label, archived_at:h.archivedAt, usd_rate:h.usdRate||0,
+  total_hours:h.totalHours||0, total_salary:h.totalSalary||0, total_revenue:h.totalRevenue||0, teachers:h.teachers||[]
+});
+const historyFromDb = r => ({
+  key:r.key, label:r.label, archivedAt:r.archived_at, usdRate:r.usd_rate||0,
+  totalHours:r.total_hours||0, totalSalary:r.total_salary||0, totalRevenue:r.total_revenue||0, teachers:r.teachers||[]
+});
+const userFromDb = r => ({ id:r.id, username:r.username, password:r.password, role:r.role, teacherId:r.teacher_id||'', displayName:r.display_name, createdAt:r.created_at||'' });
+const userToDb = u => ({ id:u.id, username:u.username, password:u.password, role:u.role, teacher_id:u.teacherId||null, display_name:u.displayName, created_at:u.createdAt||'' });
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+let users = [];           // all user accounts (loaded after login, admin only needs full list)
+let currentUser = null;   // {id, username, role, teacherId, displayName}
+
+const SESSION_KEY = 'mit_session';
+
+const isAdmin = () => currentUser && currentUser.role === 'admin';
+const isTeacherRole = () => currentUser && currentUser.role === 'teacher';
+
+const doLogin = async () => {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
+  if (!username || !password) { errEl.textContent='Enter username and password.'; errEl.style.display='block'; return; }
+
+  try {
+    const rows = await sbSelect('users', `&username=eq.${encodeURIComponent(username)}`);
+    const row = rows && rows[0];
+    if (!row || row.password !== password) {
+      errEl.textContent = 'Invalid username or password.';
+      errEl.style.display = 'block';
+      return;
+    }
+    const user = userFromDb(row);
+    currentUser = { id:user.id, username:user.username, role:user.role, teacherId:user.teacherId, displayName:user.displayName };
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
+    await afterLogin();
+  } catch(e) {
+    errEl.textContent = 'Could not connect: ' + e.message;
+    errEl.style.display = 'block';
+  }
+};
+
+const doLogout = () => {
+  sessionStorage.removeItem(SESSION_KEY);
+  currentUser = null;
+  document.getElementById('app-shell').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('login-username').value = '';
+  document.getElementById('login-password').value = '';
+  document.getElementById('login-error').style.display = 'none';
+};
+
+// Apply role-based visibility of nav items and pages
+const applyRoleUI = () => {
+  const adminNav = ['nav-teachers','nav-students','nav-salary','nav-schedule','nav-history','nav-auditlog','nav-attendance'];
+  const teacherNav = ['nav-mystudents','nav-myschedule','nav-mysalary'];
+  if (isAdmin()) {
+    adminNav.forEach(id=>document.getElementById(id).style.display='');
+    teacherNav.forEach(id=>document.getElementById(id).style.display='none');
+  } else {
+    adminNav.forEach(id=>document.getElementById(id).style.display='none');
+    teacherNav.forEach(id=>document.getElementById(id).style.display='');
+  }
+  document.getElementById('current-user-pill').innerHTML =
+    `👤 <span class="bold">${currentUser.displayName}</span> <span class="muted">(${isAdmin()?'Admin':'Teacher'})</span>`;
+};
+
+const afterLogin = async () => {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-shell').style.display = '';
+  applyRoleUI();
+  await init();
+  if (isAdmin()) refreshBellCount();
+  showPage(isAdmin() ? 'dashboard' : 'mystudents');
+};
+
+// ── Audit Log ─────────────────────────────────────────────────────────────────
+const logAction = async (action, details='') => {
+  if (!currentUser) return;
+  try {
+    await sbFetch('audit_log', {
+      method:'POST',
+      body: JSON.stringify([{
+        id: uid(), at: new Date().toISOString(),
+        user_name: currentUser.displayName, action, details
+      }])
+    });
+    auditLogCache = null; // invalidate so the Activity Log page refetches next time it's viewed
+  } catch(e) { /* non-fatal: don't block the user's action over a logging failure */ }
+};
+
+let teachers = [];
+let students = [];
+
+const persist = async () => {
+  try {
+    await sbReplaceAll('teachers', teachers, teacherToDb);
+    await sbReplaceAll('students', students, studentToDb);
+  } catch(e) { notify('⚠️ Could not save to database: '+e.message, false); }
+};
+
+// ── History / Archive ───────────────────────────────────────────────────────
+let history = [];
+const persistHistory = async () => {
+  try { await sbReplaceAll('history', history, historyToDb, 'key'); }
+  catch(e) { notify('⚠️ Could not save history: '+e.message, false); }
+};
+
+const monthLabel = key => {
+  const [y,m] = key.split('-').map(Number);
+  return new Date(y, m-1, 1).toLocaleString('en-GB',{month:'long',year:'numeric'});
+};
+
+// Snapshot current month's teacher/student performance into history before reset
+const archiveCurrentMonth = async (key) => {
+  if (!teachers.length && !students.length) return; // nothing to archive
+  const usdRate = getUsdRate();
+  const teacherSnapshots = teachers.map(t=>{
+    const hrs = teacherHours(t.id);
+    const rate = teacherRate(t);
+    const bonus = parseFloat(t.bonus)||0;
+    const baseSalary = hrs*rate;
+    const total = baseSalary+bonus;
+    const sts = teacherStudents(t.id).map(s=>({
+      studentId:s.id, name:s.name, hoursUsed:s.hoursUsed||0, amount:(s.hoursUsed||0)*rate
+    }));
+    return {
+      teacherId:t.id, name:t.name, rate, hours:hrs, bonus, bonusNote:t.bonusNote||'',
+      baseSalary, total, students:sts
+    };
+  });
+  const totalHours = students.reduce((a,s)=>a+(s.hoursUsed||0),0);
+  const totalSalary = teacherSnapshots.reduce((a,t)=>a+t.total,0);
+  const entry = {
+    key, label:monthLabel(key), archivedAt:new Date().toISOString(),
+    usdRate, totalHours, totalSalary,
+    totalRevenue: totalHours*STUDENT_RATE,
+    teachers: teacherSnapshots
+  };
+  // Replace existing entry for the same month if present (avoid duplicates on manual reset)
+  history = history.filter(h=>h.key!==key);
+  history.push(entry);
+  await persistHistory();
+};
+
+// ── Settings (key/value store in Supabase, replaces a couple of localStorage flags) ──
+const getSetting = async (key) => {
+  try {
+    const rows = await sbSelect('settings', `&key=eq.${encodeURIComponent(key)}`);
+    return rows && rows.length ? rows[0].value : null;
+  } catch(e) { return null; }
+};
+const setSetting = async (key, value) => {
+  try {
+    await sbFetch('settings?on_conflict=key', {
+      method:'POST',
+      headers:{ 'Prefer':'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify([{key, value}])
+    });
+  } catch(e) { /* non-fatal */ }
+};
+
+// ── Monthly Reset ─────────────────────────────────────────────────────────────
+const currentMonthKey = () => { const d=new Date(); return `${d.getFullYear()}-${d.getMonth()+1}`; };
+const checkMonthlyReset = async () => {
+  const key = currentMonthKey();
+  const last = await getSetting('mit_last_reset');
+  if (last !== key) {
+    if (last) await archiveCurrentMonth(last);
+    students = students.map(s=>({...s, hoursUsed:0}));
+    // also clear per-teacher manual hour overrides
+    teachers = teachers.map(t=>({...t, hoursOverride:null, bonus:0, bonusNote:''}));
+    await persist();
+    await setSetting('mit_last_reset', key);
+    if (last) { notify('✨ New month — hours reset, previous month saved to History.', true); logAction('Automatic monthly reset', key); }
+  }
+};
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+let toastTimer;
+const notify = (msg, ok=true) => {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='show '+(ok?'ok':'err');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.className='',3500);
+};
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+const ADMIN_ONLY_PAGES = ['teachers','students','salary','schedule','history','auditlog','attendance','addTeacher','addStudent'];
+const TEACHER_ONLY_PAGES = ['mystudents','myschedule','mysalary'];
+
+const showPage = id => {
+  // Defense in depth: block a teacher account from ever rendering an admin page (and vice versa)
+  if (isTeacherRole() && ADMIN_ONLY_PAGES.includes(id)) id = 'mystudents';
+  if (isAdmin() && TEACHER_ONLY_PAGES.includes(id)) id = 'dashboard';
+
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  const navBtn = document.getElementById('nav-'+id);
+  if (navBtn) navBtn.classList.add('active');
+  renderAll();
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const rem = s => (s.hoursBought||0)-(s.hoursUsed||0);
+const badgeClass = r => r<=1?'badge-red':r<=3?'badge-amber':'badge-green';
+const teacherRate = t => t.rate||DEFAULT_TEACHER_RATE;
+
+// Effective hours for a teacher: manual override wins, else sum from students
+const teacherHours = tid => {
+  const t = teachers.find(t=>t.id===tid);
+  if (t && t.hoursOverride !== null && t.hoursOverride !== undefined && t.hoursOverride !== '') {
+    return parseFloat(t.hoursOverride)||0;
+  }
+  return students.filter(s=>s.teacherId===tid).reduce((a,s)=>a+(s.hoursUsed||0),0);
+};
+const teacherStudents = tid => students.filter(s=>s.teacherId===tid);
+const getUsdRate = () => parseFloat(document.getElementById('usd-rate')?.value)||0;
+
+// ── WhatsApp Messages ─────────────────────────────────────────────────────────
+const whatsappMsg = s => {
+  const r=rem(s), t=teachers.find(t=>t.id===s.teacherId);
+  const isDebt = r<0;
+
+  let lines = [
+    `Dear ${s.name},`,
+    '',
+    `Thank you for attending your session with ${t?.name||'your teacher'}.`,
+    `⏳ Hours Remaining: ${isDebt ? '0h ('+Math.abs(r)+'h overdue)' : r+'h'}`
+  ];
+
+  if (r<=0) {
+    lines.push('', 'Kindly renew your subscription at your earliest convenience to continue your sessions without interruption.');
+  }
+
+  lines.push('', 'Best regards,', INSTITUTE_NAME);
+  return lines.join('\n');
+};
+
+const salaryReport = tid => {
+  const t = teachers.find(t=>t.id===tid);
+  if (!t) return '';
+  const sts = [...teacherStudents(tid)].sort((a,b)=>a.name.localeCompare(b.name));
+  const hrs = teacherHours(tid);
+  const rate = teacherRate(t);
+  const bonus = parseFloat(t.bonus)||0;
+  const bonusNote = t.bonusNote||'';
+  const baseSalary = hrs * rate;
+  const totalUsd = baseSalary + bonus;
+  const usdRate = getUsdRate();
+  const month = new Date().toLocaleString('en-GB',{month:'long',year:'numeric'});
+
+  let lines = [];
+  lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  lines.push('       '+INSTITUTE_NAME.toUpperCase());
+  lines.push('   Salary Report – '+month);
+  lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  lines.push('');
+  lines.push('Teacher : '+t.name);
+  lines.push('');
+  lines.push('─── Hours Breakdown ───────────');
+  if (sts.length===0) {
+    lines.push('  No students assigned.');
+  } else {
+    sts.forEach(s => {
+      const h = s.hoursUsed||0;
+      lines.push('  • '+s.name+': '+h+'h  →  $'+(h*rate).toFixed(2));
+    });
+  }
+  lines.push('');
+  lines.push('─── Salary Calculation ────────');
+  lines.push('  Total Hours   : '+hrs+'h');
+  lines.push('  Rate / Hour   : $'+rate.toFixed(2));
+  lines.push('  Base Salary   : $'+baseSalary.toFixed(2));
+  if (bonus > 0) {
+    lines.push('  Bonus         : $'+bonus.toFixed(2)+(bonusNote?' ('+bonusNote+')':''));
+  }
+  lines.push('  ─────────────────────────────');
+  lines.push('  Total (USD)   : $'+totalUsd.toFixed(2));
+  if (usdRate > 0) {
+    lines.push('  Rate USD→EGP  : '+usdRate);
+    lines.push('  Total (EGP)   : £E '+(totalUsd*usdRate).toFixed(2));
+  }
+  lines.push('');
+  lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  lines.push('Thank you for your hard work and dedication this month! 🌟');
+  lines.push('For any questions about this report, feel free to reach out.');
+  lines.push('');
+  lines.push(INSTITUTE_NAME+' · '+INSTITUTE_WEBSITE);
+  lines.push('WhatsApp: '+INSTITUTE_WHATSAPP);
+  return lines.join('\n');
+};
+
+// ── Copy helper ───────────────────────────────────────────────────────────────
+const doCopy = (textareaId, btnId) => {
+  const ta=document.getElementById(textareaId);
+  const btn=document.getElementById(btnId);
+  ta.select(); ta.setSelectionRange(0,99999);
+  try {
+    document.execCommand('copy');
+    btn.textContent='✅ Copied!';
+    notify('Copied!');
+    setTimeout(()=>btn.textContent='📋 Copy',2000);
+  } catch(e) {
+    navigator.clipboard.writeText(ta.value)
+      .then(()=>{ btn.textContent='✅ Copied!'; notify('Copied!'); setTimeout(()=>btn.textContent='📋 Copy',2000); })
+      .catch(()=>notify('Could not copy automatically.',false));
+  }
+};
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+const addTeacher = () => {
+  const name=document.getElementById('new-teacher-name').value.trim();
+  const email=document.getElementById('new-teacher-email').value.trim();
+  if (!name) return notify('Enter teacher name',false);
+  teachers.push({id:uid(),name,email,joinedAt:new Date().toLocaleDateString('en-GB'),rate:DEFAULT_TEACHER_RATE,hoursOverride:null,bonus:0,bonusNote:''});
+  persist(); notify(name+' added ✓');
+  logAction('Added teacher', name);
+  document.getElementById('new-teacher-name').value='';
+  document.getElementById('new-teacher-email').value='';
+  showPage('teachers');
+};
+
+const deleteTeacher = tid => {
+  if (teacherStudents(tid).length>0) return notify('Remove teacher\'s students first',false);
+  const t = teachers.find(t=>t.id===tid);
+  teachers=teachers.filter(t=>t.id!==tid);
+  persist(); notify('Teacher removed'); renderAll();
+  logAction('Removed teacher', t?.name||tid);
+};
+
+const addStudent = () => {
+  const name=document.getElementById('new-student-name').value.trim();
+  const email=document.getElementById('new-student-email').value.trim();
+  const tid=document.getElementById('new-student-teacher').value;
+  const hours=parseFloat(document.getElementById('new-student-hours').value)||0;
+  const isTrial=document.getElementById('new-student-type-trial').checked;
+  if (!name||!tid) return notify('Fill all required fields',false);
+  const code=genCode(name);
+  students.push({id:uid(),name,email,teacherId:tid,code,hoursBought:isTrial?1:hours,hoursUsed:0,joinedAt:new Date().toLocaleDateString('en-GB'),isTrial});
+  persist(); notify(name+' added · Code: '+code+(isTrial?' 🎯 Trial':''));
+  logAction('Added student', name+(isTrial?' [Trial]':''));
+  ['new-student-name','new-student-email','new-student-hours'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('new-student-teacher').value='';
+  document.getElementById('new-student-type-regular').checked=true;
+  showPage('students');
+};
+
+const deleteStudent = sid => {
+  if (!confirm('Remove this student?')) return;
+  const s = students.find(s=>s.id===sid);
+  students=students.filter(s=>s.id!==sid);
+  persist(); notify('Student removed'); renderAll();
+  logAction('Removed student', s?.name||sid);
+};
+
+const logHours = (sid,delta) => {
+  const h=parseFloat(document.getElementById('hrs-'+sid)?.value)||1;
+  const s = students.find(s=>s.id===sid);
+  students=students.map(s=> s.id!==sid?s:{...s,hoursUsed:Math.max(0,(s.hoursUsed||0)+h*delta)});
+  persist(); renderAll();
+  logAction(delta>0?'Logged hours':'Removed hours', `${s?.name||sid}: ${delta>0?'+':'-'}${h}h`);
+};
+
+const topUpHours = sid => {
+  const h=parseFloat(document.getElementById('buy-'+sid)?.value);
+  if(!h||h<=0) return notify('Invalid hours',false);
+  const s = students.find(s=>s.id===sid);
+  students=students.map(s=> s.id===sid?{...s,hoursBought:(s.hoursBought||0)+h}:s);
+  persist(); notify(h+'h added ✓'); renderAll();
+  logAction('Topped up hours', `${s?.name||sid}: +${h}h`);
+};
+
+const applyPromo = () => {
+  const code=document.getElementById('promo-code').value.trim().toUpperCase();
+  const newName=document.getElementById('promo-new-name').value.trim();
+  if(!code||!newName) return notify('Fill all fields',false);
+  const referrer=students.find(s=>s.code===code);
+  if(!referrer) return notify('Code not found!',false);
+  students=students.map(s=> s.id===referrer.id?{...s,hoursBought:(s.hoursBought||0)+1}:s);
+  persist(); notify(referrer.name+' earned +1 hour 🎉'); closeModal(); renderAll();
+  logAction('Applied promo code', `${code} → ${referrer.name} (+1h), referred by ${newName}`);
+};
+
+const manualReset = async () => {
+  if (!confirm('Archive current data to History and reset all teacher hours to zero?')) return;
+  await archiveCurrentMonth(currentMonthKey());
+  students=students.map(s=>({...s,hoursUsed:0}));
+  teachers=teachers.map(t=>({...t,hoursOverride:null,bonus:0,bonusNote:''}));
+  await persist();
+  await setSetting('mit_last_reset',currentMonthKey());
+  notify('✅ Saved to History and hours reset to zero.',true); renderAll();
+  logAction('Manual monthly reset', currentMonthKey());
+};
+
+// ── Modals ────────────────────────────────────────────────────────────────────
+const openPromoModal=()=>{ document.getElementById('promo-code').value=''; document.getElementById('promo-new-name').value=''; document.getElementById('modal-overlay').classList.add('open'); };
+const closeModal=()=>document.getElementById('modal-overlay').classList.remove('open');
+
+const closeMsgModal=()=>document.getElementById('msg-overlay').style.display='none';
+const copyMsg=sid=>{ const s=students.find(s=>s.id===sid); if(!s) return; document.getElementById('msg-preview').value=whatsappMsg(s); document.getElementById('copy-btn').textContent='📋 Copy Message'; document.getElementById('msg-overlay').style.display='flex'; };
+
+const closeSalaryReport=()=>document.getElementById('salary-report-overlay').style.display='none';
+const openSalaryReport=tid=>{ document.getElementById('salary-report-preview').value=salaryReport(tid); document.getElementById('salary-copy-btn').textContent='📋 Copy Report'; document.getElementById('salary-report-overlay').style.display='flex'; };
+
+// Edit Teacher
+const openEditTeacher=tid=>{ const t=teachers.find(t=>t.id===tid); if(!t) return;
+  document.getElementById('edit-teacher-id').value=t.id;
+  document.getElementById('edit-teacher-name').value=t.name;
+  document.getElementById('edit-teacher-email').value=t.email||'';
+  document.getElementById('edit-teacher-joined').value=t.joinedAt||'';
+  document.getElementById('edit-teacher-rate').value=t.rate||DEFAULT_TEACHER_RATE;
+  document.getElementById('edit-teacher-hours').value=t.hoursOverride!==null&&t.hoursOverride!==undefined?t.hoursOverride:'';
+  document.getElementById('edit-teacher-bonus').value=t.bonus||0;
+  document.getElementById('edit-teacher-bonus-note').value=t.bonusNote||'';
+  document.getElementById('edit-teacher-overlay').style.display='flex';
+};
+const closeEditTeacher=()=>document.getElementById('edit-teacher-overlay').style.display='none';
+const saveEditTeacher=()=>{
+  const tid=document.getElementById('edit-teacher-id').value;
+  const name=document.getElementById('edit-teacher-name').value.trim();
+  if(!name) return notify('Name is required',false);
+  const hoursVal=document.getElementById('edit-teacher-hours').value.trim();
+  teachers=teachers.map(t=>t.id!==tid?t:{...t,
+    name,
+    email:document.getElementById('edit-teacher-email').value.trim(),
+    joinedAt:document.getElementById('edit-teacher-joined').value.trim()||t.joinedAt,
+    rate:parseFloat(document.getElementById('edit-teacher-rate').value)||DEFAULT_TEACHER_RATE,
+    hoursOverride:hoursVal===''?null:parseFloat(hoursVal),
+    bonus:parseFloat(document.getElementById('edit-teacher-bonus').value)||0,
+    bonusNote:document.getElementById('edit-teacher-bonus-note').value.trim(),
+  });
+  persist(); notify(name+' updated ✓'); closeEditTeacher(); renderAll();
+  logAction('Edited teacher', name);
+};
+
+// Edit Student
+const openEditStudent=sid=>{ const s=students.find(s=>s.id===sid); if(!s) return;
+  document.getElementById('edit-student-id').value=s.id;
+  document.getElementById('edit-student-name').value=s.name;
+  document.getElementById('edit-student-email').value=s.email||'';
+  document.getElementById('edit-student-bought').value=s.hoursBought||0;
+  document.getElementById('edit-student-used').value=s.hoursUsed||0;
+  document.getElementById('edit-student-code').value=s.code||'';
+  document.getElementById('edit-student-joined').value=s.joinedAt||'';
+  const sel=document.getElementById('edit-student-teacher');
+  sel.innerHTML='<option value="">No Teacher</option>'+[...teachers].sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`<option value="${t.id}"${s.teacherId===t.id?' selected':''}>${t.name}</option>`).join('');
+  document.getElementById('edit-student-overlay').style.display='flex';
+};
+const closeEditStudent=()=>document.getElementById('edit-student-overlay').style.display='none';
+const saveEditStudent=()=>{
+  const sid=document.getElementById('edit-student-id').value;
+  const name=document.getElementById('edit-student-name').value.trim();
+  if(!name) return notify('Name is required',false);
+  students=students.map(s=>s.id!==sid?s:{...s,
+    name,
+    email:document.getElementById('edit-student-email').value.trim(),
+    teacherId:document.getElementById('edit-student-teacher').value,
+    hoursBought:parseFloat(document.getElementById('edit-student-bought').value)||0,
+    hoursUsed:parseFloat(document.getElementById('edit-student-used').value)||0,
+    code:document.getElementById('edit-student-code').value.trim().toUpperCase()||s.code,
+    joinedAt:document.getElementById('edit-student-joined').value.trim()||s.joinedAt,
+  });
+  persist(); notify(name+' updated ✓'); closeEditStudent(); renderAll();
+  logAction('Edited student', name);
+};
+
+// ── Render ────────────────────────────────────────────────────────────────────
+const renderDashboard=()=>{
+  const totalHours=students.reduce((a,s)=>a+(s.hoursUsed||0),0);
+  const totalSalary=teachers.reduce((a,t)=>{ const hrs=teacherHours(t.id); return a+hrs*teacherRate(t)+(parseFloat(t.bonus)||0); },0);
+  document.getElementById('stats-grid').innerHTML=[
+    {label:'Teachers',value:teachers.length,icon:'👨‍🏫',color:'#58a6ff'},
+    {label:'Students',value:students.length,icon:'📚',color:'var(--gold)'},
+    {label:'Hours Taught',value:totalHours+'h',icon:'⏱',color:'var(--green)'},
+    {label:'Teacher Salaries',value:'$'+totalSalary.toFixed(2),icon:'💵',color:'var(--red)'},
+    {label:'Revenue',value:'£'+(totalHours*STUDENT_RATE).toFixed(2),icon:'💷',color:'var(--green)'},
+  ].map(c=>`<div class="card" style="border-left:3px solid ${c.color}"><div style="font-size:22px;margin-bottom:6px">${c.icon}</div><div style="font-size:26px;font-weight:700;color:${c.color}">${c.value}</div><div class="f12 muted mt4">${c.label}</div></div>`).join('');
+
+  const lowHours=students.filter(s=>rem(s)<=1).sort((a,b)=>rem(a)-rem(b));
+  document.getElementById('low-hours-alert').innerHTML=lowHours.length===0?'':
+    `<div class="card mt16" style="border-left:3px solid var(--red)"><div class="f13 bold red mb12">⚠️ Low / Negative Balance Alert (${lowHours.length})</div>
+    ${lowHours.map(s=>{ const t=teachers.find(t=>t.id===s.teacherId), r=rem(s); return `<div class="alert-row"><div><span class="bold">${s.name}</span><span class="muted f12"> · ${t?.name||'—'}</span></div><span class="badge badge-red">${r<0?'−'+Math.abs(r)+'h owed':r+'h left'}</span></div>`; }).join('')}</div>`;
+
+  document.getElementById('teachers-overview').innerHTML=`<div class="bold gold mb12">Teachers Overview</div>
+    ${teachers.length===0?'<div class="muted f13">No teachers yet.</div>':
+    [...teachers].sort((a,b)=>a.name.localeCompare(b.name)).map(t=>{
+      const hrs=teacherHours(t.id),sts=teacherStudents(t.id).length,rate=teacherRate(t),bonus=parseFloat(t.bonus)||0;
+      const total=(hrs*rate+bonus).toFixed(2);
+      return `<div class="flex justify-between items-center flex-wrap gap8" style="padding:10px 0;border-bottom:1px solid var(--border)">
+        <div><span class="bold">${t.name}</span><span class="muted f12"> · ${sts} student${sts!==1?'s':''}</span></div>
+        <div class="flex gap8 flex-wrap">
+          <span class="badge badge-amber">${hrs}h this month</span>
+          <span class="badge badge-red">$${total}</span>
+          ${bonus>0?`<span class="badge badge-blue">+$${bonus.toFixed(2)} bonus</span>`:''}
+        </div>
+      </div>`;
+    }).join('')}`;
+};
+
+const renderTeachers=()=>{
+  const search=(document.getElementById('teacher-search-input')?.value||'').toLowerCase();
+  const filteredTeachers=teachers.filter(t=>t.name.toLowerCase().includes(search));
+  document.getElementById('teachers-title').textContent=`Teachers (${teachers.length})`;
+  document.getElementById('teachers-list').innerHTML=teachers.length===0
+    ?'<div class="card muted" style="text-align:center;padding:40px">No teachers yet.</div>'
+    :filteredTeachers.length===0
+    ?'<div class="card muted" style="text-align:center;padding:40px">No teachers found.</div>'
+    :[...filteredTeachers].sort((a,b)=>a.name.localeCompare(b.name)).map(t=>{
+      const hrs=teacherHours(t.id),sts=teacherStudents(t.id),rate=teacherRate(t),bonus=parseFloat(t.bonus)||0;
+      const total=(hrs*rate+bonus).toFixed(2);
+      const isOverride=t.hoursOverride!==null&&t.hoursOverride!==undefined&&t.hoursOverride!=='';
+      return `<div class="card student-card">
+        <div class="flex justify-between items-center flex-wrap gap8 mb12">
+          <div>
+            <div class="bold f15">${t.name}</div>
+            ${t.email?`<div class="muted f12">${t.email}</div>`:''}
+            <div class="muted f12">Joined ${t.joinedAt}</div>
+          </div>
+          <div class="flex gap8 items-center flex-wrap">
+            <span class="badge badge-amber">${hrs}h${isOverride?' ✏️':''}</span>
+            <span class="badge badge-red">$${total}</span>
+            ${bonus>0?`<span class="badge badge-blue">+$${bonus.toFixed(2)} bonus</span>`:''}
+            <button class="btn-ghost" onclick="openEditTeacher('${t.id}')">✏️ Edit</button>
+            <button class="btn-danger" onclick="deleteTeacher('${t.id}')">Remove</button>
+          </div>
+        </div>
+        ${sts.length>0?`<div style="border-top:1px solid var(--border);padding-top:10px">
+          <div class="f12 muted mb8" style="text-transform:uppercase;letter-spacing:.5px">Students</div>
+          <div>${[...sts].sort((a,b)=>a.name.localeCompare(b.name)).map(s=>`<span class="student-pill">${s.name} <span style="color:${rem(s)<=1?'var(--red)':'var(--green)'}">(${rem(s)}h left)</span></span>`).join('')}</div>
+        </div>`:''}
+      </div>`;
+    }).join('');
+};
+
+const renderStudents=()=>{
+  document.getElementById('students-title').textContent=`Students (${students.length})`;
+  const sel=document.getElementById('filter-teacher');
+  const curVal=sel.value;
+  const sorted=[...teachers].sort((a,b)=>a.name.localeCompare(b.name));
+  sel.innerHTML='<option value="all">All Teachers</option>'+sorted.map(t=>`<option value="${t.id}"${curVal===t.id?' selected':''}>${t.name}</option>`).join('');
+  const addSel=document.getElementById('new-student-teacher');
+  const addCur=addSel.value;
+  addSel.innerHTML='<option value="">Select teacher...</option>'+sorted.map(t=>`<option value="${t.id}"${addCur===t.id?' selected':''}>${t.name}</option>`).join('');
+
+  const search=document.getElementById('search-input').value.toLowerCase();
+  const filterTid=sel.value;
+  const filtered=students.filter(s=>s.name.toLowerCase().includes(search)&&(filterTid==='all'||s.teacherId===filterTid));
+
+  if(filtered.length===0){ document.getElementById('students-list').innerHTML='<div class="card muted" style="text-align:center;padding:40px">No students found.</div>'; return; }
+
+  const studentCard=s=>{
+    const t=teachers.find(t=>t.id===s.teacherId);
+    const r=rem(s),used=s.hoursUsed||0,bought=s.hoursBought||0;
+    const isDebt=r<0;
+    const pct=bought>0?Math.min(100,Math.round(used/bought*100)):0;
+    const barColor=isDebt?'var(--red)':pct>=90?'var(--red)':pct>=70?'var(--gold)':'var(--green)';
+    const borderColor=isDebt?'var(--red)':r<=1?'var(--red)':r<=3?'var(--gold)':'var(--green)';
+    return `<div class="card student-card" style="border-left:3px solid ${borderColor}">
+      <div class="flex justify-between items-center flex-wrap gap8">
+        <div class="flex1">
+          <div class="flex items-center gap8 flex-wrap">
+            <span class="bold f15">${s.name}</span>
+            ${s.email?`<span class="muted f12">${s.email}</span>`:''}
+            <span class="badge badge-amber mono code-pill f12">${s.code}</span>
+            ${isDebt?'<span class="badge badge-red">⚠️ Owes hours</span>':''}
+          </div>
+          <div class="muted f12 mt4">Joined ${s.joinedAt}</div>
+        </div>
+        <div class="flex gap8 items-center flex-wrap">
+          <span class="badge ${badgeClass(r)}">${isDebt?'−'+Math.abs(r)+'h owed':r+'h remaining'}</span>
+          <button class="btn-green" onclick="copyMsg('${s.id}')">📋 Message</button>
+          <button class="btn-ghost" onclick="openEditStudent('${s.id}')">✏️ Edit</button>
+          <button class="btn-danger" onclick="deleteStudent('${s.id}')">Remove</button>
+        </div>
+      </div>
+      <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${isDebt?100:pct}%;background:${barColor}"></div></div>
+      <div class="flex justify-between f12 muted mb8"><span>${used}h used of ${bought}h${isDebt?' · '+Math.abs(r)+'h over balance':''}</span><span>${isDebt?'':pct+'%'}</span></div>
+      <div class="hours-row">
+        <span class="f12 muted">Log hours:</span>
+        <input id="hrs-${s.id}" type="number" min="0.5" step="0.5" value="1" class="small-input"/>
+        <button class="btn-gold" onclick="logHours('${s.id}',1)">+ Add</button>
+        <button class="btn-ghost" onclick="logHours('${s.id}',-1)">− Remove</button>
+        <span class="f12 muted" style="margin-left:8px">Buy hours:</span>
+        <input id="buy-${s.id}" type="number" min="1" step="1" placeholder="4" class="small-input"/>
+        <button class="btn-green" onclick="topUpHours('${s.id}')">+ Top Up</button>
+      </div>
+    </div>`;
+  };
+
+  const sortedTeachers=[...teachers].sort((a,b)=>a.name.localeCompare(b.name));
+  let html='';
+  if(filterTid==='all'){
+    sortedTeachers.forEach(t=>{
+      const ts=filtered.filter(s=>s.teacherId===t.id).sort((a,b)=>a.name.localeCompare(b.name));
+      if(!ts.length) return;
+      html+=`<div style="margin-bottom:24px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+          <span>👨‍🏫</span><span class="bold f15 gold">${t.name}</span>
+          <span class="badge badge-blue" style="margin-left:auto">${ts.length} student${ts.length!==1?'s':''}</span>
+        </div>
+        <div style="padding-left:16px;border-left:2px solid var(--border)">${ts.map(studentCard).join('')}</div>
+      </div>`;
+    });
+    const noT=filtered.filter(s=>!teachers.find(t=>t.id===s.teacherId)).sort((a,b)=>a.name.localeCompare(b.name));
+    if(noT.length) html+=`<div style="margin-bottom:24px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+        <span>❓</span><span class="bold f15 muted">No Teacher Assigned</span>
+        <span class="badge badge-blue" style="margin-left:auto">${noT.length} student${noT.length!==1?'s':''}</span>
+      </div>
+      <div style="padding-left:16px;border-left:2px solid var(--border)">${noT.map(studentCard).join('')}</div>
+    </div>`;
+  } else {
+    html=[...filtered].sort((a,b)=>a.name.localeCompare(b.name)).map(studentCard).join('');
+  }
+  document.getElementById('students-list').innerHTML=html||'<div class="card muted" style="text-align:center;padding:40px">No students found.</div>';
+};
+
+const renderSalary=()=>{
+  const month=new Date().toLocaleString('en-GB',{month:'long',year:'numeric'});
+  document.getElementById('salary-title').textContent=`Salary Calculator · ${month}`;
+  const usdRate=getUsdRate();
+  const search=(document.getElementById('salary-search-input')?.value||'').toLowerCase();
+  const filteredTeachers=teachers.filter(t=>t.name.toLowerCase().includes(search));
+
+  document.getElementById('salary-list').innerHTML=teachers.length===0
+    ?'<div class="card muted" style="text-align:center;padding:40px">No teachers yet.</div>'
+    :filteredTeachers.length===0
+    ?'<div class="card muted" style="text-align:center;padding:40px">No teachers found.</div>'
+    :[...filteredTeachers].sort((a,b)=>a.name.localeCompare(b.name)).map(t=>{
+      const sts=[...teacherStudents(t.id)].sort((a,b)=>a.name.localeCompare(b.name));
+      const hrs=teacherHours(t.id), rate=teacherRate(t), bonus=parseFloat(t.bonus)||0;
+      const baseSalary=(hrs*rate).toFixed(2), totalUsd=(hrs*rate+bonus).toFixed(2);
+      const isOverride=t.hoursOverride!==null&&t.hoursOverride!==undefined&&t.hoursOverride!=='';
+      return `<div class="card mb12">
+        <div class="flex justify-between items-center flex-wrap gap8 mb12">
+          <div>
+            <div class="bold f15">${t.name}</div>
+            <div class="f12 muted mt4">Rate: $${rate}/h${isOverride?' · ✏️ Hours overridden':''}</div>
+          </div>
+          <div class="flex gap8 flex-wrap">
+            <span class="badge badge-amber">${hrs}h taught</span>
+            <span class="badge badge-red">Base: $${baseSalary}</span>
+            ${bonus>0?`<span class="badge badge-blue">Bonus: +$${bonus.toFixed(2)}</span>`:''}
+            <span class="badge badge-red" style="font-weight:700">Total: $${totalUsd}</span>
+            ${usdRate>0?`<span class="badge badge-green">£E ${(parseFloat(totalUsd)*usdRate).toFixed(2)}</span>`:''}
+            <button class="btn-green" onclick="openSalaryReport('${t.id}')">📋 Send Report</button>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:12px">
+          <div class="f12 muted mb8" style="text-transform:uppercase;letter-spacing:.5px">Breakdown by student</div>
+          ${sts.length===0?'<div class="muted f13">No students assigned.</div>':
+          sts.map(s=>`<div class="salary-row">
+            <span>${s.name}</span>
+            <div class="flex gap12">
+              <span class="muted">${s.hoursUsed||0}h</span>
+              <span class="red">$${((s.hoursUsed||0)*rate).toFixed(2)}</span>
+              <span class="green">Revenue: £${((s.hoursUsed||0)*STUDENT_RATE).toFixed(2)}</span>
+            </div>
+          </div>`).join('')}
+          ${bonus>0?`<div class="salary-row" style="border-bottom:none"><span class="gold">Bonus</span><div class="flex gap12"><span class="gold">$${bonus.toFixed(2)}</span><span class="muted f12">${t.bonusNote||''}</span></div></div>`:''}
+        </div>
+      </div>`;
+    }).join('');
+
+  const totalHrs=students.reduce((a,s)=>a+(s.hoursUsed||0),0);
+  const totalSalary=teachers.reduce((a,t)=>a+teacherHours(t.id)*teacherRate(t)+(parseFloat(t.bonus)||0),0);
+  document.getElementById('salary-total').innerHTML=`
+    <div class="bold gold mb12">Total Summary</div>
+    ${[
+      {label:'Total hours taught',value:totalHrs+'h'},
+      {label:'Total teacher salaries (USD)',value:'$'+totalSalary.toFixed(2)},
+      usdRate>0?{label:'Total salaries (EGP)',value:'£E '+(totalSalary*usdRate).toFixed(2)}:null,
+      {label:'Total revenue from students',value:'£'+(totalHrs*STUDENT_RATE).toFixed(2)},
+    ].filter(Boolean).map(r=>`<div class="salary-row"><span class="muted">${r.label}</span><span class="bold">${r.value}</span></div>`).join('')}`;
+};
+
+// ── History ───────────────────────────────────────────────────────────────────
+const renderHistory=()=>{
+  const sel = document.getElementById('history-month-select');
+  if (!sel) return;
+  const sorted = [...history].sort((a,b)=>b.key.localeCompare(a.key,undefined,{numeric:true}));
+  const curVal = sel.value;
+
+  if (!sorted.length) {
+    sel.innerHTML = '<option value="">No archived months yet</option>';
+    document.getElementById('history-content').innerHTML =
+      '<div class="card muted" style="text-align:center;padding:40px">No history yet — past months will appear here automatically once a new month starts.</div>';
+    return;
+  }
+
+  sel.innerHTML = sorted.map(h=>`<option value="${h.key}"${curVal===h.key?' selected':''}>${h.label}</option>`).join('');
+  const activeKey = sel.value || sorted[0].key;
+  sel.value = activeKey;
+  const entry = sorted.find(h=>h.key===activeKey) || sorted[0];
+
+  const summaryHtml = `<div class="card mb16">
+    <div class="bold gold mb12">${entry.label} — Summary</div>
+    ${[
+      {label:'Total hours taught',value:entry.totalHours+'h'},
+      {label:'Total teacher salaries (USD)',value:'$'+entry.totalSalary.toFixed(2)},
+      entry.usdRate>0?{label:'Total salaries (EGP)',value:'£E '+(entry.totalSalary*entry.usdRate).toFixed(2)}:null,
+      {label:'Total revenue from students',value:'£'+entry.totalRevenue.toFixed(2)},
+    ].filter(Boolean).map(r=>`<div class="salary-row"><span class="muted">${r.label}</span><span class="bold">${r.value}</span></div>`).join('')}
+  </div>`;
+
+  const teachersHtml = !entry.teachers.length
+    ? '<div class="card muted" style="text-align:center;padding:40px">No teachers recorded for this month.</div>'
+    : [...entry.teachers].sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`<div class="card mb12">
+        <div class="flex justify-between items-center flex-wrap gap8 mb12">
+          <div>
+            <div class="bold f15">${t.name}</div>
+            <div class="f12 muted mt4">Rate: $${t.rate}/h</div>
+          </div>
+          <div class="flex gap8 flex-wrap">
+            <span class="badge badge-amber">${t.hours}h taught</span>
+            <span class="badge badge-red">Base: $${t.baseSalary.toFixed(2)}</span>
+            ${t.bonus>0?`<span class="badge badge-blue">Bonus: +$${t.bonus.toFixed(2)}</span>`:''}
+            <span class="badge badge-red" style="font-weight:700">Total: $${t.total.toFixed(2)}</span>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:12px">
+          <div class="f12 muted mb8" style="text-transform:uppercase;letter-spacing:.5px">Breakdown by student</div>
+          ${!t.students.length?'<div class="muted f13">No students recorded.</div>':
+          t.students.map(s=>`<div class="salary-row">
+            <span>${s.name}</span>
+            <div class="flex gap12">
+              <span class="muted">${s.hoursUsed}h</span>
+              <span class="red">$${s.amount.toFixed(2)}</span>
+            </div>
+          </div>`).join('')}
+          ${t.bonus>0?`<div class="salary-row" style="border-bottom:none"><span class="gold">Bonus</span><div class="flex gap12"><span class="gold">$${t.bonus.toFixed(2)}</span><span class="muted f12">${t.bonusNote||''}</span></div></div>`:''}
+        </div>
+      </div>`).join('');
+
+  document.getElementById('history-content').innerHTML = summaryHtml + teachersHtml;
+};
+
+// ── Audit Log view (admin only) ────────────────────────────────────────────────
+let auditLogCache = null;
+const renderAuditLog = async (forceRefresh=false) => {
+  const el = document.getElementById('auditlog-content');
+  if (!el) return;
+  if (!auditLogCache || forceRefresh) {
+    el.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">Loading…</div>';
+    try {
+      const rows = await sbFetch('audit_log?select=*&order=at.desc&limit=300');
+      auditLogCache = rows||[];
+    } catch(e) {
+      el.innerHTML = `<div class="card" style="text-align:center;padding:40px;color:var(--red)">⚠️ Could not load activity log: ${e.message}</div>`;
+      return;
+    }
+  }
+  const search = (document.getElementById('auditlog-search-input')?.value||'').toLowerCase();
+  const filtered = auditLogCache.filter(r =>
+    r.user_name.toLowerCase().includes(search) || r.action.toLowerCase().includes(search) || (r.details||'').toLowerCase().includes(search)
+  );
+  if (!filtered.length) { el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">No activity recorded yet.</div>'; return; }
+
+  el.innerHTML = `<div class="card">` + filtered.map(r=>{
+    const d = new Date(r.at);
+    const when = isNaN(d) ? r.at : d.toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    return `<div class="salary-row">
+      <div>
+        <span class="bold">${r.user_name}</span>
+        <span class="muted"> — ${r.action}</span>
+        ${r.details?`<div class="f12 muted mt4">${r.details}</div>`:''}
+      </div>
+      <span class="f12 muted mono" style="white-space:nowrap">${when}</span>
+    </div>`;
+  }).join('') + `</div>`;
+};
+
+// ── Attendance Log ─────────────────────────────────────────────────────────────
+let attendanceCache = null;
+
+const openAttendanceModal = (sid, name) => {
+  document.getElementById('attendance-sid').value = sid;
+  document.getElementById('attendance-student-name-display').textContent = 'Student: ' + name;
+  document.getElementById('attendance-hours').value = '1';
+  document.getElementById('attendance-note').value = '';
+  document.getElementById('attendance-overlay').classList.add('open');
+};
+const closeAttendanceModal = () => {
+  document.getElementById('attendance-overlay').classList.remove('open');
+};
+
+const submitAttendance = async () => {
+  const sid = document.getElementById('attendance-sid').value;
+  const hours = parseFloat(document.getElementById('attendance-hours').value);
+  const note = document.getElementById('attendance-note').value.trim();
+  if (!hours || hours <= 0) return notify('Enter valid hours', false);
+  const stu = students.find(s => s.id === sid);
+  const teacher = teachers.find(t => t.id === currentUser.teacherId);
+  if (!stu || !teacher) return notify('Student not found', false);
+
+  // Log hours immediately to student record
+  students = students.map(s => s.id === sid ? {...s, hoursUsed: (s.hoursUsed||0) + hours} : s);
+  persist();
+
+  // Save attendance log entry (unseen by admin)
+  try {
+    await sbFetch('attendance_log', {
+      method: 'POST',
+      body: JSON.stringify([{
+        id: uid(),
+        student_id: sid,
+        student_name: stu.name,
+        teacher_id: currentUser.teacherId,
+        teacher_name: currentUser.displayName,
+        hours,
+        note,
+        logged_at: new Date().toISOString(),
+        seen_by_admin: false
+      }])
+    });
+    attendanceCache = null; // invalidate admin cache
+  } catch(e) { notify('⚠️ Attendance saved locally but could not notify admin: ' + e.message, false); }
+
+  closeAttendanceModal();
+  notify(`✅ ${hours}h logged for ${stu.name}`);
+  renderAll();
+};
+
+// Admin: load and display attendance log
+const loadAttendance = async (forceRefresh=false) => {
+  const el = document.getElementById('attendance-content');
+  if (!el) return;
+  if (!attendanceCache || forceRefresh) {
+    el.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">Loading…</div>';
+    try {
+      const rows = await sbFetch('attendance_log?select=*&order=logged_at.desc&limit=200');
+      attendanceCache = rows || [];
+    } catch(e) {
+      el.innerHTML = `<div class="card" style="text-align:center;padding:40px;color:var(--red)">⚠️ ${e.message}</div>`;
+      return;
+    }
+  }
+  // Update notification bell
+  const unseen = attendanceCache.filter(r => !r.seen_by_admin);
+  const bell = document.getElementById('notif-bell');
+  const count = document.getElementById('notif-count');
+  if (bell) bell.style.display = isAdmin() ? '' : 'none';
+  if (count) { count.textContent = unseen.length; count.style.display = unseen.length > 0 ? '' : 'none'; }
+
+  if (!attendanceCache.length) {
+    el.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">No attendance logged yet.</div>';
+    return;
+  }
+
+  el.innerHTML = `<div class="card">` + attendanceCache.map(r => {
+    const d = new Date(r.logged_at);
+    const when = isNaN(d) ? r.logged_at : d.toLocaleString('en-GB', {day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    return `<div class="salary-row">
+      <div>
+        <span class="bold">${r.student_name}</span>
+        <span class="muted"> — ${r.hours}h</span>
+        <span class="badge badge-blue f12" style="margin-left:8px">${r.teacher_name}</span>
+        ${r.note ? `<div class="f12 muted mt4">${r.note}</div>` : ''}
+        ${!r.seen_by_admin ? `<span class="badge badge-amber f12 mt4">New</span>` : ''}
+      </div>
+      <div class="flex gap8 items-center">
+        <span class="f12 muted mono" style="white-space:nowrap">${when}</span>
+        <button class="btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteAttendance('${r.id}','${r.student_id}',${r.hours})">✕ Cancel</button>
+      </div>
+    </div>`;
+  }).join('') + `</div>`;
+
+  // Mark all as seen
+  if (unseen.length > 0) {
+    try {
+      await sbFetch('attendance_log?seen_by_admin=eq.false', {
+        method: 'PATCH',
+        headers: { 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ seen_by_admin: true })
+      });
+      attendanceCache = attendanceCache.map(r => ({...r, seen_by_admin: true}));
+      if (count) count.style.display = 'none';
+    } catch(e) { /* non-fatal */ }
+  }
+};
+
+const deleteAttendance = async (aid, sid, hours) => {
+  if (!confirm('Cancel this attendance and reverse the hours?')) return;
+  try {
+    await sbFetch(`attendance_log?id=eq.${aid}`, { method: 'DELETE' });
+    students = students.map(s => s.id === sid ? {...s, hoursUsed: Math.max(0,(s.hoursUsed||0)-hours)} : s);
+    persist();
+    attendanceCache = null;
+    notify('↩️ Attendance cancelled and hours reversed', true);
+    renderAll();
+    loadAttendance(true);
+    logAction('Cancelled attendance', `${hours}h reversed`);
+  } catch(e) { notify('⚠️ Could not cancel: ' + e.message, false); }
+};
+
+// Refresh bell count on login (load unseen count without fetching full log)
+const refreshBellCount = async () => {
+  if (!isAdmin()) return;
+  try {
+    const rows = await sbFetch('attendance_log?seen_by_admin=eq.false&select=id');
+    const n = (rows||[]).length;
+    const bell = document.getElementById('notif-bell');
+    const count = document.getElementById('notif-count');
+    if (bell) bell.style.display = '';
+    if (count) { count.textContent = n; count.style.display = n > 0 ? '' : 'none'; }
+  } catch(e) { /* non-fatal */ }
+};
+
+// ── Trial WhatsApp Reminder ────────────────────────────────────────────────────
+const buildTrialWhatsApp = (stuName, teacherName, day, time) => {
+  const msg = `السلام عليكم 🌙\nتذكير: معك حصة ترايل مجانية اليوم مع ${stuName}\n📅 ${day} | ⏰ ${time}\n\nMY Institute`;
+  return `https://wa.me/?text=${encodeURIComponent(msg)}`;
+};
+
+const renderTrialAlert = () => {
+  const el = document.getElementById('trial-alert');
+  if (!el || !currentUser) return;
+  const now = new Date();
+  const todayDay = DAYS[now.getDay() === 0 ? 6 : now.getDay() - 1] || now.toLocaleDateString('en-GB',{weekday:'long'});
+  const myStudents = students.filter(s => s.teacherId === currentUser.teacherId && s.isTrial);
+  if (!myStudents.length) { el.innerHTML = ''; return; }
+
+  const trialAlerts = myStudents.map(s => {
+    const pkg = schedules.find(p => p.studentId === s.id);
+    if (!pkg) return null;
+    const todaySess = pkg.days.find(d => d.day === todayDay);
+    if (!todaySess) return null;
+    // check if session is within next 2 hours
+    const [h, m] = (todaySess.start||'00:00').split(':').map(Number);
+    const sessMinutes = h * 60 + m;
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const diff = sessMinutes - nowMinutes;
+    if (diff < 0 || diff > 120) return null;
+    return {s, day: todayDay, time: todaySess.start};
+  }).filter(Boolean);
+
+  if (!trialAlerts.length) { el.innerHTML = ''; return; }
+
+  el.innerHTML = trialAlerts.map(({s, day, time}) => `
+    <div class="card mb12" style="border-color:var(--gold);background:#1a1400">
+      <div class="flex justify-between items-center flex-wrap gap8">
+        <div>
+          <span class="badge badge-amber mb8">🎯 Trial Student</span>
+          <div class="bold">${s.name}</div>
+          <div class="f12 muted mt4">حصة ترايل اليوم الساعة ${time}</div>
+        </div>
+        <a href="${buildTrialWhatsApp(s.name, currentUser.displayName, day, time)}" target="_blank">
+          <button class="btn-gold">📲 إرسال تذكير واتساب</button>
+        </a>
+      </div>
+    </div>`).join('');
+};
+
+// ── Teacher-only views (names only, own data only) ─────────────────────────────
+const renderMyStudents = () => {
+  const el = document.getElementById('mystudents-list');
+  if (!el || !currentUser) return;
+  const myStudents = students.filter(s=>s.teacherId===currentUser.teacherId).sort((a,b)=>a.name.localeCompare(b.name));
+  if (!myStudents.length) { el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">No students assigned yet.</div>'; return; }
+  el.innerHTML = myStudents.map(s=>`
+    <div class="card student-card mb12">
+      <div class="flex justify-between items-center flex-wrap gap8">
+        <div>
+          <span class="bold f15">${s.name}</span>
+          ${s.isTrial ? `<span class="badge badge-amber" style="margin-left:8px">🎯 Trial</span>` : ''}
+          <div class="f12 muted mt4">${s.hoursUsed||0}h used this month</div>
+        </div>
+        <button class="btn-green" style="padding:6px 14px;font-size:12px" onclick="openAttendanceModal('${s.id}','${s.name.replace(/'/g,"\\'")}')">
+          ✅ Log Attendance
+        </button>
+      </div>
+    </div>`).join('');
+};
+
+const renderMySchedule = () => {
+  const el = document.getElementById('myschedule-list');
+  if (!el || !currentUser) return;
+  const myStudents = students.filter(s=>s.teacherId===currentUser.teacherId);
+  const mySchedules = myStudents.map(s=>({stu:s, pkg:schedules.find(p=>p.studentId===s.id)})).filter(x=>x.pkg);
+  if (!mySchedules.length) { el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">No sessions scheduled yet.</div>'; return; }
+
+  const byDay = DAYS.map(day=>{
+    const daySess = mySchedules.filter(({pkg})=>pkg.days.find(d=>d.day===day));
+    if (!daySess.length) return '';
+    const sessHtml = daySess
+      .map(({stu,pkg})=>{
+        const d = pkg.days.find(d=>d.day===day);
+        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <span class="mono f13" style="min-width:130px">${fmtSess(d.start,d.dur)}</span>
+          <span class="badge badge-blue">${stu.name}</span>
+          ${pkg.subject?`<span class="badge badge-amber f12">${pkg.subject}</span>`:''}
+        </div>`;
+      }).join('');
+    return `<div class="card mb12">
+      <div class="bold gold mb12" style="font-size:15px">📅 ${day}</div>
+      ${sessHtml}
+    </div>`;
+  }).join('');
+
+  el.innerHTML = byDay || '<div class="card muted" style="text-align:center;padding:40px">No sessions scheduled yet.</div>';
+  renderTrialAlert();
+};
+
+const renderMySalary = () => {
+  const el = document.getElementById('mysalary-content');
+  if (!el || !currentUser) return;
+  const t = teachers.find(t=>t.id===currentUser.teacherId);
+  if (!t) { el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">Salary data not available.</div>'; return; }
+  const month = new Date().toLocaleString('en-GB',{month:'long',year:'numeric'});
+  const hrs = teacherHours(t.id), rate = teacherRate(t), bonus = parseFloat(t.bonus)||0;
+  const total = (hrs*rate+bonus).toFixed(2);
+  el.innerHTML = `<div class="card">
+    <div class="f12 muted mb12" style="text-transform:uppercase;letter-spacing:.5px">${month}</div>
+    <div class="salary-row"><span class="muted">Hours taught</span><span class="bold">${hrs}h</span></div>
+    <div class="salary-row"><span class="muted">Rate / hour</span><span class="bold">$${rate}</span></div>
+    <div class="salary-row"><span class="muted">Base salary</span><span class="bold">$${(hrs*rate).toFixed(2)}</span></div>
+    ${bonus>0?`<div class="salary-row"><span class="gold">Bonus</span><span class="gold">+$${bonus.toFixed(2)}${t.bonusNote?' ('+t.bonusNote+')':''}</span></div>`:''}
+    <div class="salary-row" style="border-bottom:none"><span class="bold f15">Total (so far this month)</span><span class="bold f15 gold">$${total}</span></div>
+  </div>`;
+};
+
+const renderAll=()=>{
+  if (isAdmin()) {
+    renderDashboard(); renderTeachers(); renderStudents(); renderSalary(); renderSchedule(); renderHistory(); renderAuditLog(); loadAttendance();
+  } else if (isTeacherRole()) {
+    renderMyStudents(); renderMySchedule(); renderMySalary(); renderTrialAlert();
+  }
+};
+
+// ── Schedule ──────────────────────────────────────────────────────────────────
+// schedules: [{id, studentId, subject, days:[{day, start, end}]}]
+let schedules = [];
+
+const persistSchedules = async () => {
+  try { await sbReplaceAll('schedules', schedules, scheduleToDb); }
+  catch(e) { notify('⚠️ Could not save schedules: '+e.message, false); }
+};
+
+const DAYS = ['Saturday','Sunday','Monday','Tuesday','Wednesday','Thursday','Friday'];
+const CHIP_COLORS = [
+  {bg:'#0d2240',border:'#1e4a80',text:'#58a6ff'},
+  {bg:'#0f2d1a',border:'#2a6b40',text:'#5dba7e'},
+  {bg:'#2d1f08',border:'#6b4a1a',text:'#c9a84c'},
+  {bg:'#2d0f1a',border:'#6b1a30',text:'#f07070'},
+  {bg:'#1a0d2d',border:'#4a1a6b',text:'#b07aff'},
+  {bg:'#0d2d2d',border:'#1a6b6b',text:'#5ddada'},
+  {bg:'#2d1a0d',border:'#8c4a1a',text:'#ff9f58'},
+  {bg:'#1a2d0d',border:'#4a8c1a',text:'#9fff58'},
+];
+
+const studentColor = sid => {
+  const idx = students.findIndex(s=>s.id===sid);
+  return CHIP_COLORS[((idx%CHIP_COLORS.length)+CHIP_COLORS.length)%CHIP_COLORS.length];
+};
+const teacherColorByIdx = tid => {
+  const idx = teachers.findIndex(t=>t.id===tid);
+  return CHIP_COLORS[((idx%CHIP_COLORS.length)+CHIP_COLORS.length)%CHIP_COLORS.length];
+};
+
+const fmt12 = t => {
+  if (!t) return '';
+  const [h,m] = t.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return `${((h%12)||12)}:${String(m).padStart(2,'0')} ${ampm}`;
+};
+// Format a session as "10:00 AM (60 min)"
+const fmtSess = (start, dur) => {
+  const endStr = minsToTime(timeToMins(start)+(dur||60));
+  return `${fmt12(start)} – ${fmt12(endStr)} <span style="opacity:.6;font-size:11px">(${durLabel(dur||60)})</span>`;
+};
+
+// ── Student Schedule Modal ────────────────────────────────────────────────────
+const openStudentScheduleModal = (sid=null) => {
+  const sortedStu = [...students].sort((a,b)=>a.name.localeCompare(b.name));
+  document.getElementById('stu-sched-student').innerHTML =
+    '<option value="">Select student...</option>' +
+    sortedStu.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+
+  if (sid) {
+    // editing existing schedule
+    const pkg = schedules.find(p=>p.studentId===sid);
+    if (!pkg) return;
+    document.getElementById('stu-sched-sid').value = sid;
+    document.getElementById('stu-sched-student').value = sid;
+    document.getElementById('stu-sched-subject').value = pkg.subject||'';
+    document.getElementById('stu-sched-title').textContent = '✏️ Edit Student Schedule';
+    document.getElementById('stu-sched-delete-btn').style.display = 'inline-flex';
+    buildDaysSelector(pkg.days);
+  } else {
+    document.getElementById('stu-sched-sid').value = '';
+    document.getElementById('stu-sched-student').value = '';
+    document.getElementById('stu-sched-subject').value = '';
+    document.getElementById('stu-sched-default-dur').value = '60';
+    document.getElementById('stu-sched-title').textContent = '📅 Student Schedule';
+    document.getElementById('stu-sched-delete-btn').style.display = 'none';
+    buildDaysSelector([]);
+  }
+  document.getElementById('stu-sched-overlay').style.display = 'flex';
+};
+
+const onScheduleStudentChange = () => {
+  const sid = document.getElementById('stu-sched-student').value;
+  if (!sid) { document.getElementById('conflict-alert-modal').style.display='none'; return; }
+  const existing = schedules.find(p=>p.studentId===sid);
+  if (existing) {
+    document.getElementById('stu-sched-subject').value = existing.subject||'';
+    document.getElementById('stu-sched-sid').value = sid;
+    document.getElementById('stu-sched-delete-btn').style.display = 'inline-flex';
+    buildDaysSelector(existing.days);
+  } else {
+    document.getElementById('stu-sched-sid').value = '';
+    document.getElementById('stu-sched-delete-btn').style.display = 'none';
+    buildDaysSelector([]);
+  }
+  checkModalConflicts();
+};
+
+// ── Duration helpers ─────────────────────────────────────────────────────────
+const timeToMins = t => { if(!t) return 0; const [h,m]=t.split(':').map(Number); return h*60+m; };
+const minsToTime = m => { const h=Math.floor(m/60)%24; const mm=m%60; return String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0'); };
+const durLabel = m => m>=60 ? (m%60===0 ? m/60+'h' : Math.floor(m/60)+'h '+m%60+'min') : m+'min';
+
+// Returns list of conflict warnings for a given student being edited (editingSid)
+// days = [{day, start, dur}]
+const getConflicts = (editingSid, days) => {
+  const stu = students.find(s=>s.id===editingSid);
+  if (!stu || !stu.teacherId) return [];
+  const tid = stu.teacherId;
+  const conflicts = [];
+  // All sessions of this teacher (other students)
+  schedules.forEach(pkg => {
+    if (pkg.studentId === editingSid) return;
+    const otherStu = students.find(s=>s.id===pkg.studentId);
+    if (!otherStu || otherStu.teacherId !== tid) return;
+    pkg.days.forEach(pd => {
+      const match = days.find(nd=>nd.day===pd.day);
+      if (!match) return;
+      const as = timeToMins(match.start), ae = as + (match.dur||60);
+      const bs = timeToMins(pd.start), be = bs + (pd.dur||60);
+      if (as < be && ae > bs) {
+        conflicts.push(`⚠️ ${match.day}: overlaps with ${otherStu.name} (${fmt12(pd.start)} – ${fmt12(minsToTime(be))})`);
+      }
+    });
+  });
+  return conflicts;
+};
+
+const buildDaysSelector = (existingDays=[]) => {
+  const container = document.getElementById('days-selector');
+  const defaultDur = parseInt(document.getElementById('stu-sched-default-dur')?.value)||60;
+  container.innerHTML = DAYS.map(day => {
+    const ex = existingDays.find(d=>d.day===day);
+    const checked = !!ex;
+    const startVal = ex?.start||'';
+    const dur = ex?.dur || defaultDur;
+    const endPreview = (checked && startVal) ? fmt12(minsToTime(timeToMins(startVal)+dur)) : '—';
+    const durOpts = [30,60,90,120,150,180].map(v=>`<option value="${v}"${v===dur?' selected':''}>${durLabel(v)}</option>`).join('');
+    return `<div class="day-row" id="dayrow-${day}" style="background:var(--bg);border:1px solid ${checked?'var(--gold)':'var(--border)'};border-radius:8px;padding:8px 12px;transition:border .2s">
+      <div class="flex items-center gap8 flex-wrap">
+        <input type="checkbox" id="daycheck-${day}" ${checked?'checked':''} onchange="toggleDayRow('${day}')"
+          style="width:16px;height:16px;accent-color:var(--gold);flex-shrink:0;cursor:pointer"/>
+        <label for="daycheck-${day}" style="font-weight:600;font-size:13px;cursor:pointer;min-width:80px">${day}</label>
+        <div class="flex gap8 items-center day-time-fields" style="display:${checked?'flex':'none'}!important;flex-wrap:wrap">
+          <input type="time" id="daystart-${day}" value="${startVal}" oninput="updateDayEndPreview('${day}')"
+            style="width:110px;padding:5px 8px;font-size:12px"/>
+          <select id="daydur-${day}" onchange="updateDayEndPreview('${day}')" style="width:100px;padding:5px 8px;font-size:12px">${durOpts}</select>
+          <span class="f12 muted" id="dayend-preview-${day}" style="min-width:70px">→ ${endPreview}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  checkModalConflicts();
+};
+
+const toggleDayRow = day => {
+  const cb = document.getElementById('daycheck-'+day);
+  const row = document.getElementById('dayrow-'+day);
+  const fields = row.querySelector('.day-time-fields');
+  if (cb.checked) {
+    fields.style.display = 'flex';
+    row.style.borderColor = 'var(--gold)';
+  } else {
+    fields.style.display = 'none';
+    row.style.borderColor = 'var(--border)';
+  }
+  checkModalConflicts();
+};
+
+const applyDefaultDuration = () => {
+  const dur = parseInt(document.getElementById('stu-sched-default-dur').value)||60;
+  DAYS.forEach(day=>{
+    const sel = document.getElementById('daydur-'+day);
+    if (sel) { sel.value = dur; updateDayEndPreview(day); }
+  });
+};
+
+const updateDayEndPreview = day => {
+  const start = document.getElementById('daystart-'+day)?.value;
+  const dur = parseInt(document.getElementById('daydur-'+day)?.value)||60;
+  const preview = document.getElementById('dayend-preview-'+day);
+  if (preview) {
+    preview.textContent = start ? '→ '+fmt12(minsToTime(timeToMins(start)+dur)) : '→ —';
+  }
+  checkModalConflicts();
+};
+
+const checkModalConflicts = () => {
+  const sid = document.getElementById('stu-sched-student')?.value;
+  const box = document.getElementById('conflict-alert-modal');
+  if (!box) return;
+  if (!sid) { box.style.display='none'; return; }
+  const days = [];
+  DAYS.forEach(day=>{
+    const cb = document.getElementById('daycheck-'+day);
+    if (cb && cb.checked) {
+      const start = document.getElementById('daystart-'+day)?.value;
+      const dur = parseInt(document.getElementById('daydur-'+day)?.value)||60;
+      if (start) days.push({day, start, dur});
+    }
+  });
+  const conflicts = getConflicts(sid, days);
+  if (conflicts.length) {
+    box.style.display = 'block';
+    box.innerHTML = '<strong>Conflict detected:</strong><br>' + conflicts.join('<br>');
+  } else {
+    box.style.display = 'none';
+  }
+};
+
+const closeStudentScheduleModal = () => {
+  document.getElementById('stu-sched-overlay').style.display = 'none';
+};
+
+const saveStudentSchedule = () => {
+  const sid = document.getElementById('stu-sched-student').value;
+  if (!sid) return notify('Select a student first', false);
+  const subject = document.getElementById('stu-sched-subject').value.trim();
+  const days = [];
+  for (const day of DAYS) {
+    const cb = document.getElementById('daycheck-'+day);
+    if (cb && cb.checked) {
+      const start = document.getElementById('daystart-'+day).value;
+      const dur = parseInt(document.getElementById('daydur-'+day)?.value)||60;
+      if (!start) return notify(`Set start time for ${day}`, false);
+      days.push({day, start, dur});
+    }
+  }
+  if (!days.length) return notify('Select at least one day', false);
+
+  // warn on conflicts but still allow save
+  const conflicts = getConflicts(sid, days);
+  if (conflicts.length) {
+    if (!confirm('⚠️ Schedule conflicts detected:\n\n' + conflicts.join('\n') + '\n\nSave anyway?')) return;
+  }
+
+  schedules = schedules.filter(p=>p.studentId!==sid);
+  schedules.push({id:uid(), studentId:sid, subject, days});
+  persistSchedules();
+  const stu = students.find(s=>s.id===sid);
+  notify(`${stu?.name||'Student'} schedule saved ✓`);
+  closeStudentScheduleModal();
+  renderSchedule();
+  logAction('Saved schedule', `${stu?.name||sid}: ${days.length} day(s)`);
+};
+
+const deleteStudentSchedule = () => {
+  const sid = document.getElementById('stu-sched-student').value;
+  if (!sid || !confirm('Remove this student\'s schedule?')) return;
+  const stu = students.find(s=>s.id===sid);
+  schedules = schedules.filter(p=>p.studentId!==sid);
+  persistSchedules();
+  notify('Schedule removed');
+  closeStudentScheduleModal();
+  renderSchedule();
+  logAction('Removed schedule', stu?.name||sid);
+};
+
+// ── Edit single session day ────────────────────────────────────────────────────
+const previewEditEnd = () => {
+  const start = document.getElementById('edit-sess-start')?.value;
+  const dur = parseInt(document.getElementById('edit-sess-dur')?.value)||60;
+  const preview = document.getElementById('edit-sess-end-preview');
+  const alert = document.getElementById('edit-conflict-alert');
+  if (preview) preview.textContent = start ? 'Ends at: '+fmt12(minsToTime(timeToMins(start)+dur)) : 'Ends at: —';
+  // check conflict
+  const sid = document.getElementById('edit-sess-pkg-sid')?.value;
+  const day = document.getElementById('edit-sess-day')?.value;
+  if (sid && day && start) {
+    const conflicts = getConflicts(sid, [{day, start, dur}]);
+    if (conflicts.length && alert) { alert.style.display='block'; alert.textContent=conflicts.join(' | '); }
+    else if (alert) alert.style.display='none';
+  }
+};
+
+const openEditSess = (sid, day) => {
+  const pkg = schedules.find(p=>p.studentId===sid);
+  if (!pkg) return;
+  const d = pkg.days.find(d=>d.day===day);
+  if (!d) return;
+  const stu = students.find(s=>s.id===sid);
+  document.getElementById('edit-sess-pkg-sid').value = sid;
+  document.getElementById('edit-sess-day').value = day;
+  document.getElementById('edit-sess-label').textContent = `${day} · ${stu?.name||''}`;
+  document.getElementById('edit-sess-start').value = d.start;
+  document.getElementById('edit-sess-dur').value = d.dur||60;
+  document.getElementById('edit-sess-subject').value = pkg.subject||'';
+  document.getElementById('edit-conflict-alert').style.display='none';
+  previewEditEnd();
+  document.getElementById('edit-sess-overlay').style.display = 'flex';
+};
+const closeEditSess = () => document.getElementById('edit-sess-overlay').style.display='none';
+const saveEditSess = () => {
+  const sid = document.getElementById('edit-sess-pkg-sid').value;
+  const day = document.getElementById('edit-sess-day').value;
+  const start = document.getElementById('edit-sess-start').value;
+  const dur = parseInt(document.getElementById('edit-sess-dur').value)||60;
+  const subject = document.getElementById('edit-sess-subject').value.trim();
+  if (!start) return notify('Set start time',false);
+  const conflicts = getConflicts(sid, [{day, start, dur}]);
+  if (conflicts.length) {
+    if (!confirm('⚠️ Conflict:\n'+conflicts.join('\n')+'\n\nSave anyway?')) return;
+  }
+  schedules = schedules.map(p=>p.studentId!==sid?p:{
+    ...p, subject,
+    days: p.days.map(d=>d.day!==day?d:{...d,start,dur})
+  });
+  persistSchedules(); notify('Session updated ✓'); closeEditSess(); renderSchedule();
+  const stu = students.find(s=>s.id===sid);
+  logAction('Edited session', `${stu?.name||sid}: ${day} ${start}`);
+};
+const removeEditSessDay = () => {
+  const sid = document.getElementById('edit-sess-pkg-sid').value;
+  const day = document.getElementById('edit-sess-day').value;
+  if (!confirm(`Remove ${day} from this student's schedule?`)) return;
+  schedules = schedules.map(p=>p.studentId!==sid?p:{...p,days:p.days.filter(d=>d.day!==day)});
+  schedules = schedules.filter(p=>p.days.length>0);
+  persistSchedules(); notify('Day removed'); closeEditSess(); renderSchedule();
+  const stu = students.find(s=>s.id===sid);
+  logAction('Removed session day', `${stu?.name||sid}: ${day}`);
+};
+
+// ── Render ────────────────────────────────────────────────────────────────────
+const renderSchedule = () => {
+  const view = document.getElementById('schedule-view').value;
+  document.getElementById('schedule-week-view').style.display   = view==='week'    ? '' : 'none';
+  document.getElementById('schedule-student-view').style.display = view==='student' ? '' : 'none';
+  document.getElementById('schedule-teacher-view').style.display = view==='teacher' ? '' : 'none';
+  if (view==='week')    renderWeekGrid();
+  if (view==='student') renderStudentScheduleView();
+  if (view==='teacher') renderTeacherScheduleView();
+  renderConflictBanner();
+};
+
+const renderConflictBanner = () => {
+  const banner = document.getElementById('schedule-conflicts-banner');
+  if (!banner) return;
+  const allConflicts = [];
+  teachers.forEach(t => {
+    const tStudents = students.filter(s=>s.teacherId===t.id);
+    DAYS.forEach(day => {
+      const daySess = [];
+      tStudents.forEach(s=>{
+        const pkg = schedules.find(p=>p.studentId===s.id);
+        if (!pkg) return;
+        const d = pkg.days.find(d=>d.day===day);
+        if (d) daySess.push({stu:s, d});
+      });
+      daySess.forEach(({stu:sA,d:dA},i) => {
+        daySess.forEach(({stu:sB,d:dB},j) => {
+          if(i>=j) return;
+          const as=timeToMins(dA.start),ae=as+(dA.dur||60),bs=timeToMins(dB.start),be=bs+(dB.dur||60);
+          if(as<be&&ae>bs) allConflicts.push(`⚠️ ${day}: ${sA.name} & ${sB.name} overlap (${t.name})`);
+        });
+      });
+    });
+  });
+  if (allConflicts.length) {
+    banner.style.display='block';
+    banner.innerHTML='<strong>⚠️ Schedule Conflicts ('+allConflicts.length+')</strong><br>'+allConflicts.join('<br>');
+  } else {
+    banner.style.display='none';
+  }
+};
+
+const renderWeekGrid = () => {
+  const cols = DAYS.map(day => {
+    // collect all sessions for this day across all packages
+    const daySessions = [];
+    schedules.forEach(pkg => {
+      const d = pkg.days.find(d=>d.day===day);
+      if (!d) return;
+      const stu = students.find(s=>s.id===pkg.studentId);
+      const teacher = stu ? teachers.find(t=>t.id===stu.teacherId) : null;
+      daySessions.push({pkg, d, stu, teacher});
+    });
+    daySessions.sort((a,b)=>a.d.start.localeCompare(b.d.start));
+
+    // detect conflicts for this day
+    const conflictSids = new Set();
+    daySessions.forEach(({d:dA, pkg:pA},i)=>{
+      daySessions.forEach(({d:dB, pkg:pB},j)=>{
+        if(i>=j) return;
+        const stuA=students.find(s=>s.id===pA.studentId), stuB=students.find(s=>s.id===pB.studentId);
+        if(!stuA||!stuB||stuA.teacherId!==stuB.teacherId) return;
+        const as=timeToMins(dA.start),ae=as+(dA.dur||60),bs=timeToMins(dB.start),be=bs+(dB.dur||60);
+        if(as<be&&ae>bs){conflictSids.add(pA.studentId);conflictSids.add(pB.studentId);}
+      });
+    });
+
+    const chips = daySessions.map(({pkg,d,stu,teacher}) => {
+      const c = studentColor(pkg.studentId);
+      const isConflict = conflictSids.has(pkg.studentId);
+      const endStr = minsToTime(timeToMins(d.start)+(d.dur||60));
+      return `<div class="session-chip" style="background:${c.bg};border-color:${isConflict?'var(--red)':c.border};color:${c.text};${isConflict?'box-shadow:0 0 0 1px var(--red)':''}"
+        onclick="openEditSess('${pkg.studentId}','${day}')">
+        ${isConflict?'<div style="font-size:10px;color:var(--red);font-weight:700;margin-bottom:3px">⚠️ CONFLICT</div>':''}
+        <div class="chip-name">${stu?.name||'—'}</div>
+        <div class="chip-time">${fmt12(d.start)} – ${fmt12(endStr)}</div>
+        <div style="font-size:10px;opacity:.65;margin-top:1px">${durLabel(d.dur||60)}</div>
+        ${teacher?`<div style="font-size:11px;margin-top:2px;opacity:.7">👨‍🏫 ${teacher.name}</div>`:''}
+        ${pkg.subject?`<div style="font-size:11px;margin-top:2px;opacity:.75">${pkg.subject}</div>`:''}
+      </div>`;
+    }).join('');
+
+    return `<div class="week-col">
+      <div class="week-col-head">${day}</div>
+      <div class="week-col-body">${chips||'<div style="color:var(--muted);font-size:11px;text-align:center;padding:12px 0">Free</div>'}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('week-grid').innerHTML =
+    `<div class="schedule-overflow"><div class="week-grid">${cols}</div></div>`;
+};
+
+const renderStudentScheduleView = () => {
+  const sortedStu = [...students].sort((a,b)=>a.name.localeCompare(b.name));
+  const withSched = sortedStu.filter(s=>schedules.find(p=>p.studentId===s.id));
+  const noSched   = sortedStu.filter(s=>!schedules.find(p=>p.studentId===s.id));
+
+  let html = '';
+  if (!students.length) {
+    html = '<div class="card muted" style="text-align:center;padding:40px">No students yet.</div>';
+  } else {
+    withSched.forEach(stu => {
+      const pkg = schedules.find(p=>p.studentId===stu.id);
+      const teacher = teachers.find(t=>t.id===stu.teacherId);
+      const c = studentColor(stu.id);
+      const daysHtml = DAYS.filter(d=>pkg.days.find(pd=>pd.day===d)).map(day=>{
+        const d = pkg.days.find(pd=>pd.day===day);
+        return `<div class="sched-row">
+          <span class="sched-day-badge">${day}</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:${c.text}">${fmtSess(d.start,d.dur)}</span>
+          ${pkg.subject?`<span class="badge" style="background:${c.bg};border:1px solid ${c.border};color:${c.text};margin-left:4px">${pkg.subject}</span>`:''}
+        </div>`;
+      }).join('');
+      html += `<div class="card teacher-schedule-card" style="border-left:3px solid ${c.text}">
+        <div class="flex justify-between items-center mb8 flex-wrap gap8">
+          <div>
+            <div class="bold f15" style="color:${c.text}">${stu.name}</div>
+            ${teacher?`<div class="f12 muted mt4">👨‍🏫 ${teacher.name}</div>`:''}
+          </div>
+          <div class="flex gap8 items-center flex-wrap">
+            <span class="badge" style="background:${c.bg};border:1px solid ${c.border};color:${c.text}">${pkg.days.length} day${pkg.days.length!==1?'s':''}/week</span>
+            <button class="btn-ghost" style="font-size:12px;padding:5px 12px" onclick="openStudentScheduleModal('${stu.id}')">✏️ Edit</button>
+          </div>
+        </div>
+        ${daysHtml}
+      </div>`;
+    });
+    if (noSched.length) {
+      html += `<div class="card mt8" style="border-left:3px solid var(--border)">
+        <div class="f13 muted bold mb8">No schedule set</div>
+        ${noSched.map(s=>`<span class="student-pill" style="cursor:pointer" onclick="openStudentScheduleModal()">+ ${s.name}</span>`).join('')}
+      </div>`;
+    }
+  }
+  document.getElementById('student-schedule-list').innerHTML = html;
+};
+
+const renderTeacherScheduleView = () => {
+  if (!teachers.length) {
+    document.getElementById('teacher-schedule-list').innerHTML = '<div class="card muted" style="text-align:center;padding:40px">No teachers yet.</div>';
+    return;
+  }
+  const sorted = [...teachers].sort((a,b)=>a.name.localeCompare(b.name));
+  document.getElementById('teacher-schedule-list').innerHTML = sorted.map(t => {
+    const c = teacherColorByIdx(t.id);
+    // get all students of this teacher who have schedules
+    const tStudents = students.filter(s=>s.teacherId===t.id);
+    const tSchedules = tStudents.map(s=>({stu:s, pkg:schedules.find(p=>p.studentId===s.id)})).filter(x=>x.pkg);
+
+    // build day-grouped view
+    const byDay = DAYS.map(day=>{
+      const daySess = tSchedules.filter(({pkg})=>pkg.days.find(d=>d.day===day));
+      if (!daySess.length) return '';
+      return daySess.map(({stu,pkg})=>{
+        const d = pkg.days.find(d=>d.day===day);
+        const sc = studentColor(stu.id);
+        // check conflict with other students of same teacher on this day+time
+        const otherSess = tSchedules.filter(x=>x.stu.id!==stu.id).map(x=>x.pkg.days.find(pd=>pd.day===day)).filter(Boolean);
+        const ds=timeToMins(d.start),de=ds+(d.dur||60);
+        const isConflict = otherSess.some(od=>{ const os=timeToMins(od.start),oe=os+(od.dur||60); return ds<oe&&de>os; });
+        return `<div class="sched-row" style="${isConflict?'background:var(--red-bg);border-radius:6px;padding:4px 8px;':''}cursor:pointer" onclick="openEditSess('${stu.id}','${day}')">
+          <span class="sched-day-badge">${day}</span>
+          ${isConflict?'<span style="color:var(--red);font-size:11px;font-weight:700">⚠️</span>':''}
+          <span style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:${isConflict?'var(--red)':c.text}">${fmtSess(d.start,d.dur)}</span>
+          <span class="badge" style="background:${sc.bg};border:1px solid ${sc.border};color:${sc.text}">${stu.name}</span>
+          ${pkg.subject?`<span class="badge badge-blue" style="font-size:11px">${pkg.subject}</span>`:''}
+        </div>`;
+      }).join('');
+    }).join('');
+
+    const totalSess = tSchedules.reduce((a,{pkg})=>a+pkg.days.length,0);
+    return `<div class="card teacher-schedule-card" style="border-left:3px solid ${c.text}">
+      <div class="flex justify-between items-center mb12 flex-wrap gap8">
+        <div class="bold f15" style="color:${c.text}">${t.name}</div>
+        <span class="badge" style="background:${c.bg};border:1px solid ${c.border};color:${c.text}">${tSchedules.length} student${tSchedules.length!==1?'s':''} · ${totalSess} session${totalSess!==1?'s':''}/week</span>
+      </div>
+      ${byDay||'<div class="muted f13">No student sessions scheduled.</div>'}
+    </div>`;
+  }).join('');
+};
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.getElementById('today-date').textContent=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+
+const loadAllData = async () => {
+  if (isAdmin()) {
+    const [teacherRows, studentRows, scheduleRows, historyRows] = await Promise.all([
+      sbSelect('teachers'),
+      sbSelect('students'),
+      sbSelect('schedules'),
+      sbSelect('history')
+    ]);
+    teachers = (teacherRows||[]).map(teacherFromDb);
+    students = (studentRows||[]).map(studentFromDb);
+    schedules = (scheduleRows||[]).map(scheduleFromDb);
+    history = (historyRows||[]).map(historyFromDb);
+  } else {
+    // Teacher accounts only need their own students/schedules + the full teachers list
+    // (needed internally for rate/hours calculations) — never exposed in the UI.
+    const [teacherRows, studentRows] = await Promise.all([
+      sbSelect('teachers'),
+      sbSelect('students', `&teacher_id=eq.${encodeURIComponent(currentUser.teacherId)}`)
+    ]);
+    teachers = (teacherRows||[]).map(teacherFromDb);
+    students = (studentRows||[]).map(studentFromDb);
+    // Fetch schedules only for this teacher's students
+    const myStudentIds = students.map(s=>s.id);
+    if (myStudentIds.length > 0) {
+      const scheduleRows = await sbSelect('schedules', `&student_id=in.(${myStudentIds.join(',')})`);
+      schedules = (scheduleRows||[]).map(scheduleFromDb);
+    } else {
+      schedules = [];
+    }
+    history = [];
+  }
+};
+
+const init = async () => {
+  try {
+    document.getElementById('loading-state').style.display = '';
+    await loadAllData();
+    if (isAdmin()) await checkMonthlyReset();
+    document.getElementById('loading-state').style.display = 'none';
+    renderAll();
+  } catch(e) {
+    document.getElementById('loading-state').style.display = '';
+    document.getElementById('loading-state').innerHTML =
+      `<div class="f15 red bold">⚠️ Could not connect to the database</div>
+       <div class="f12 muted mt8">${(e.message||'Unknown error').replace(/</g,'&lt;')}</div>
+       <div class="f12 muted mt8">Check your internet connection, then reload the page.</div>
+       <button class="btn-gold mt12" onclick="location.reload()">🔄 Retry</button>`;
+  }
+};
+
+// Restore session if present (stays logged in until explicit logout), otherwise show login screen
+(() => {
+  const saved = sessionStorage.getItem(SESSION_KEY);
+  if (saved) {
+    try {
+      currentUser = JSON.parse(saved);
+      afterLogin();
+    } catch(e) { doLogout(); }
+  }
+})();
+</script>
+</body>
+</html>
