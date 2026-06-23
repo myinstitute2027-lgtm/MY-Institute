@@ -652,7 +652,7 @@ const doLogout = () => {
 
 // Apply role-based visibility of nav items and pages
 const applyRoleUI = () => {
-  const adminNav = ['nav-teachers','nav-students','nav-salary','nav-schedule','nav-history','nav-auditlog','nav-attendance'];
+  const adminNav = ['nav-dashboard','nav-teachers','nav-students','nav-salary','nav-schedule','nav-history','nav-auditlog','nav-attendance'];
   const teacherNav = ['nav-mystudents','nav-myschedule','nav-mysalary'];
   if (isAdmin()) {
     adminNav.forEach(id=>document.getElementById(id).style.display='');
@@ -786,7 +786,7 @@ const notify = (msg, ok=true) => {
 };
 
 // ── Navigation ────────────────────────────────────────────────────────────────
-const ADMIN_ONLY_PAGES = ['teachers','students','salary','schedule','history','auditlog','attendance','addTeacher','addStudent'];
+const ADMIN_ONLY_PAGES = ['dashboard','teachers','students','salary','schedule','history','auditlog','attendance','addTeacher','addStudent'];
 const TEACHER_ONLY_PAGES = ['mystudents','myschedule','mysalary'];
 
 const showPage = id => {
