@@ -1839,7 +1839,7 @@ const closeStudentScheduleModal = () => {
   document.getElementById('stu-sched-overlay').style.display = 'none';
 };
 
-const saveStudentSchedule = () => {
+const saveStudentSchedule = async () => {
   const sid = document.getElementById('stu-sched-student').value;
   if (!sid) return notify('Select a student first', false);
   const subject = document.getElementById('stu-sched-subject').value.trim();
@@ -1861,8 +1861,11 @@ const saveStudentSchedule = () => {
     if (!confirm('⚠️ Schedule conflicts detected:\n\n' + conflicts.join('\n') + '\n\nSave anyway?')) return;
   }
 
+  const existing = schedules.find(p=>p.studentId===sid);
+  if (existing) await sbDelete('schedules','id',existing.id);
   schedules = schedules.filter(p=>p.studentId!==sid);
-  schedules.push({id:uid(), studentId:sid, subject, days});
+  const newPkg = {id:uid(), studentId:sid, subject, days};
+  schedules.push(newPkg);
   persistSchedules();
   const stu = students.find(s=>s.id===sid);
   notify(`${stu?.name||'Student'} schedule saved ✓`);
