@@ -1630,29 +1630,41 @@ const renderTrialAlert = () => {
 };
 
 // ── Teacher-only views (names only, own data only) ─────────────────────────────
-const renderMyStudents = () => {
+const renderMyStudents = async () => {
   const el = document.getElementById('mystudents-list');
   if (!el || !currentUser) return;
   const myStudents = students.filter(s=>s.teacherId===currentUser.teacherId).sort((a,b)=>a.name.localeCompare(b.name));
   if (!myStudents.length) {
-    el.innerHTML=`<div class="card muted" style="text-align:center;padding:40px">
-      No students found.<br><span class="f12">teacherId: ${currentUser.teacherId} | total students: ${students.length}</span>
-    </div>`;
+    el.innerHTML=`<div class="card muted" style="text-align:center;padding:40px">No students assigned yet.</div>`;
     return;
   }
-  el.innerHTML = myStudents.map(s=>`
+
+  // Get today's logged attendance for this teacher's students
+  let todayLogged = new Set();
+  try {
+    const todayKey = todayDateKey();
+    const rows = await sbFetch(`attendance_log?teacher_id=eq.${currentUser.teacherId}&select=student_id,logged_at`);
+    (rows||[]).forEach(r => { if ((r.logged_at||'').slice(0,10) === todayKey) todayLogged.add(r.student_id); });
+  } catch(e) { /* non-fatal */ }
+
+  el.innerHTML = myStudents.map(s=>{
+    const doneToday = todayLogged.has(s.id);
+    return `
     <div class="card student-card mb12">
       <div class="flex justify-between items-center flex-wrap gap8">
         <div>
           <span class="bold f15">${s.name}</span>
           ${s.isTrial ? `<span class="badge badge-amber" style="margin-left:8px">🎯 Trial</span>` : ''}
+          ${doneToday ? `<span class="badge badge-green" style="margin-left:8px">✅ Attended Today</span>` : ''}
           <div class="f12 muted mt4">${s.hoursUsed||0}h used this month</div>
         </div>
-        <button class="btn-green" style="padding:6px 14px;font-size:12px" onclick="openAttendanceModal('${s.id}','${s.name.replace(/'/g,"\\'")}')">
-          ✅ Log Attendance
-        </button>
+        ${doneToday
+          ? `<button class="btn-ghost" style="padding:6px 14px;font-size:12px;opacity:0.5;cursor:not-allowed" disabled>✅ Done</button>`
+          : `<button class="btn-green" style="padding:6px 14px;font-size:12px" onclick="openAttendanceModal('${s.id}','${s.name.replace(/'/g,"\\'")}')">✅ Log Attendance</button>`
+        }
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 };
 
 const renderMySchedule = () => {
