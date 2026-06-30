@@ -496,20 +496,32 @@ button:hover{opacity:.85}
 
 <!-- ATTENDANCE LOG MODAL - outside app-shell to avoid display:none blocking -->
 <div id="attendance-overlay" onclick="closeAttendanceModal()" class="overlay-base">
-  <div onclick="event.stopPropagation()" class="modal-base" style="width:380px">
+  <div onclick="event.stopPropagation()" class="modal-base" style="width:400px">
     <div class="f15 bold gold mb4">✅ Log Attendance</div>
-    <div class="f12 muted mb16" id="attendance-student-name-display"></div>
+    <div class="f13 bold mb16" id="attendance-student-name-display"></div>
     <input type="hidden" id="attendance-sid"/>
     <div class="form-group">
       <label class="label">Hours *</label>
-      <input id="attendance-hours" type="number" min="0.5" step="0.5" placeholder="1"/>
+      <select id="attendance-hours">
+        <option value="0.5">0.5h — 30 min</option>
+        <option value="1" selected>1h — 60 min</option>
+        <option value="1.5">1.5h — 90 min</option>
+        <option value="2">2h — 120 min</option>
+        <option value="2.5">2.5h — 150 min</option>
+        <option value="3">3h — 180 min</option>
+      </select>
     </div>
     <div class="form-group">
-      <label class="label">Note (optional)</label>
-      <input id="attendance-note" placeholder="e.g. Completed Surah Al-Baqarah"/>
+      <label class="label">Homework * <span class="muted f12">(required)</span></label>
+      <textarea id="attendance-homework" placeholder="e.g. Review Surah Al-Baqarah verses 1-5..." style="min-height:80px;resize:vertical"></textarea>
     </div>
+    <div class="form-group">
+      <label class="label">Note <span class="muted f12">(optional)</span></label>
+      <input id="attendance-note" placeholder="e.g. Student did well today"/>
+    </div>
+    <div id="attendance-error" class="f12 red mb8" style="display:none"></div>
     <div class="flex gap8 mt8">
-      <button class="btn-gold flex1" onclick="submitAttendance()">Submit</button>
+      <button class="btn-gold flex1" onclick="submitAttendance()">✅ Submit</button>
       <button class="btn-ghost" onclick="closeAttendanceModal()">Cancel</button>
     </div>
   </div>
@@ -1379,28 +1391,54 @@ let attendanceCache = null;
 
 const openAttendanceModal = (sid, name) => {
   document.getElementById('attendance-sid').value = sid;
-  document.getElementById('attendance-student-name-display').textContent = 'Student: ' + name;
+  document.getElementById('attendance-student-name-display').textContent = '👤 ' + name;
   document.getElementById('attendance-hours').value = '1';
+  document.getElementById('attendance-homework').value = '';
   document.getElementById('attendance-note').value = '';
+  document.getElementById('attendance-error').style.display = 'none';
   document.getElementById('attendance-overlay').classList.add('open');
 };
 const closeAttendanceModal = () => {
   document.getElementById('attendance-overlay').classList.remove('open');
 };
 
+const todayDateKey = () => new Date().toISOString().slice(0,10);
+
 const submitAttendance = async () => {
   const sid = document.getElementById('attendance-sid').value;
   const hours = parseFloat(document.getElementById('attendance-hours').value);
+  const homework = document.getElementById('attendance-homework').value.trim();
   const note = document.getElementById('attendance-note').value.trim();
-  if (!hours || hours <= 0) return notify('Enter valid hours', false);
-  const stu = students.find(s => s.id === sid);
-  if (!stu) return notify('Student not found', false);
+  const errEl = document.getElementById('attendance-error');
+  errEl.style.display = 'none';
 
-  // Log hours immediately to student record
+  // Homework is required
+  if (!homework) {
+    errEl.textContent = '⚠️ Homework is required before submitting.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const stu = students.find(s => s.id === sid);
+  if (!stu) return;
+
+  // Check if already logged today
+  try {
+    const existing = await sbFetch(`attendance_log?student_id=eq.${sid}&select=id,logged_at`);
+    const todayKey = todayDateKey();
+    const alreadyToday = (existing||[]).some(r => (r.logged_at||'').slice(0,10) === todayKey);
+    if (alreadyToday) {
+      errEl.textContent = '⚠️ Already logged today. You can log again tomorrow.';
+      errEl.style.display = 'block';
+      return;
+    }
+  } catch(e) { /* non-fatal */ }
+
+  // Log hours
   students = students.map(s => s.id === sid ? {...s, hoursUsed: (s.hoursUsed||0) + hours} : s);
   persist();
 
-  // Save attendance log entry
+  // Save to DB
   try {
     await sbFetch('attendance_log', {
       method: 'POST',
@@ -1411,13 +1449,17 @@ const submitAttendance = async () => {
         teacher_id: currentUser.teacherId || null,
         teacher_name: currentUser.displayName,
         hours,
-        note,
+        note: homework + (note ? ' | Note: ' + note : ''),
         logged_at: new Date().toISOString(),
         seen_by_admin: false
       }])
     });
     attendanceCache = null;
-  } catch(e) { notify('⚠️ ' + e.message, false); }
+  } catch(e) {
+    errEl.textContent = '⚠️ Could not save: ' + e.message;
+    errEl.style.display = 'block';
+    return;
+  }
 
   closeAttendanceModal();
   notify(`✅ ${hours}h logged for ${stu.name}`);
@@ -1431,44 +1473,77 @@ const loadAttendance = async (forceRefresh=false) => {
   if (!attendanceCache || forceRefresh) {
     el.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">Loading…</div>';
     try {
-      const rows = await sbFetch('attendance_log?select=*&order=logged_at.desc&limit=200');
+      const rows = await sbFetch('attendance_log?select=*&order=logged_at.desc&limit=500');
       attendanceCache = rows || [];
     } catch(e) {
       el.innerHTML = `<div class="card" style="text-align:center;padding:40px;color:var(--red)">⚠️ ${e.message}</div>`;
       return;
     }
   }
-  // Update notification bell
-  const unseen = attendanceCache.filter(r => !r.seen_by_admin);
+
+  // Split today vs history
+  const todayKey = todayDateKey();
+  const todayRows = attendanceCache.filter(r => (r.logged_at||'').slice(0,10) === todayKey);
+  const historyRows = attendanceCache.filter(r => (r.logged_at||'').slice(0,10) !== todayKey);
+
+  // Update notification bell (only today's unseen)
+  const unseen = todayRows.filter(r => !r.seen_by_admin);
   const bell = document.getElementById('notif-bell');
   const count = document.getElementById('notif-count');
   if (bell) bell.style.display = isAdmin() ? '' : 'none';
   if (count) { count.textContent = unseen.length; count.style.display = unseen.length > 0 ? '' : 'none'; }
 
-  if (!attendanceCache.length) {
-    el.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">No attendance logged yet.</div>';
-    return;
+  const renderRow = (r, showCancel=false) => {
+    const d = new Date(r.logged_at);
+    const when = isNaN(d) ? r.logged_at : d.toLocaleString('en-GB', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+    // Split homework from note
+    const noteParts = (r.note||'').split(' | Note: ');
+    const homework = noteParts[0];
+    const sideNote = noteParts[1]||'';
+    return `<div class="salary-row" style="flex-direction:column;align-items:flex-start;gap:8px;padding:14px 0">
+      <div class="flex justify-between items-center" style="width:100%">
+        <div>
+          <span class="bold f14">${r.student_name}</span>
+          <span class="badge badge-amber f12" style="margin-left:8px">${r.hours}h</span>
+          <span class="badge badge-blue f12" style="margin-left:4px">${r.teacher_name}</span>
+          ${!r.seen_by_admin ? `<span class="badge badge-red f12" style="margin-left:4px">New</span>` : ''}
+        </div>
+        <div class="flex gap8 items-center">
+          <span class="f12 muted">${when}</span>
+          ${showCancel ? `<button class="btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteAttendance('${r.id}','${r.student_id}',${r.hours})">✕ Cancel</button>` : ''}
+        </div>
+      </div>
+      ${homework ? `<div style="background:var(--bg);border-left:3px solid var(--gold);padding:8px 12px;border-radius:6px;width:100%;box-sizing:border-box">
+        <div class="f12 muted mb4">📚 Homework</div>
+        <div class="f13">${homework}</div>
+        ${sideNote ? `<div class="f12 muted mt4">💬 ${sideNote}</div>` : ''}
+        <button onclick="navigator.clipboard.writeText('${homework.replace(/'/g,"\\'")}').then(()=>notify('Copied ✓'))" 
+          style="margin-top:8px;padding:4px 10px;font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--text)">
+          📋 Copy Homework
+        </button>
+      </div>` : ''}
+    </div>`;
+  };
+
+  let html = '';
+
+  // Today's attendance
+  if (!todayRows.length) {
+    html += '<div class="card muted mb12" style="text-align:center;padding:30px">No attendance logged today yet.</div>';
+  } else {
+    html += `<div class="f14 bold mb8">📅 Today's Attendance (${todayRows.length})</div>`;
+    html += `<div class="card mb20">${todayRows.map(r => renderRow(r, true)).join('')}</div>`;
   }
 
-  el.innerHTML = `<div class="card">` + attendanceCache.map(r => {
-    const d = new Date(r.logged_at);
-    const when = isNaN(d) ? r.logged_at : d.toLocaleString('en-GB', {day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-    return `<div class="salary-row">
-      <div>
-        <span class="bold">${r.student_name}</span>
-        <span class="muted"> — ${r.hours}h</span>
-        <span class="badge badge-blue f12" style="margin-left:8px">${r.teacher_name}</span>
-        ${r.note ? `<div class="f12 muted mt4">${r.note}</div>` : ''}
-        ${!r.seen_by_admin ? `<span class="badge badge-amber f12 mt4">New</span>` : ''}
-      </div>
-      <div class="flex gap8 items-center">
-        <span class="f12 muted mono" style="white-space:nowrap">${when}</span>
-        <button class="btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteAttendance('${r.id}','${r.student_id}',${r.hours})">✕ Cancel</button>
-      </div>
-    </div>`;
-  }).join('') + `</div>`;
+  // History
+  if (historyRows.length > 0) {
+    html += `<div class="f14 bold mb8 muted">🗂️ Previous Days (${historyRows.length})</div>`;
+    html += `<div class="card">${historyRows.slice(0,50).map(r => renderRow(r, false)).join('')}</div>`;
+  }
 
-  // Mark all as seen
+  el.innerHTML = html;
+
+  // Mark today's as seen
   if (unseen.length > 0) {
     try {
       await sbFetch('attendance_log?seen_by_admin=eq.false', {
