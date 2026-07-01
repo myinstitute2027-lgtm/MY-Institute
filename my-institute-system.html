@@ -1546,12 +1546,26 @@ const loadAttendance = async (forceRefresh=false) => {
     const noteParts = (r.note||'').split(' | Note: ');
     const homework = noteParts[0];
     const sideNote = noteParts[1]||'';
+
+    // Get remaining hours for this student
+    const stu = students.find(s=>s.id===r.student_id);
+    const remaining = stu ? Math.max(0,(stu.hoursBought||0)-(stu.hoursUsed||0)) : null;
+
+    // Build combined message
+    const combinedMsg = [
+      `📚 Homework: ${homework}`,
+      sideNote ? `💬 Note: ${sideNote}` : '',
+      remaining !== null ? `⏳ Remaining hours: ${remaining}h` : '',
+      remaining === 0 ? `⚠️ Please renew your hours to continue sessions.` : '',
+    ].filter(Boolean).join('\n');
+
     return `<div class="salary-row" style="flex-direction:column;align-items:flex-start;gap:8px;padding:14px 0">
       <div class="flex justify-between items-center" style="width:100%">
         <div>
           <span class="bold f14">${r.student_name}</span>
           <span class="badge badge-amber f12" style="margin-left:8px">${r.hours}h</span>
           <span class="badge badge-blue f12" style="margin-left:4px">${r.teacher_name}</span>
+          ${remaining !== null ? `<span class="badge ${remaining<=1?'badge-red':remaining<=3?'badge-amber':'badge-green'} f12" style="margin-left:4px">${remaining}h left</span>` : ''}
           ${!r.seen_by_admin ? `<span class="badge badge-red f12" style="margin-left:4px">New</span>` : ''}
         </div>
         <div class="flex gap8 items-center">
@@ -1563,9 +1577,10 @@ const loadAttendance = async (forceRefresh=false) => {
         <div class="f12 muted mb4">📚 Homework</div>
         <div class="f13">${homework}</div>
         ${sideNote ? `<div class="f12 muted mt4">💬 ${sideNote}</div>` : ''}
-        <button onclick="navigator.clipboard.writeText('${homework.replace(/'/g,"\\'")}').then(()=>notify('Copied ✓'))" 
-          style="margin-top:8px;padding:4px 10px;font-size:11px;background:transparent;border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--text)">
-          📋 Copy Homework
+        ${remaining !== null ? `<div class="f12 mt4" style="color:${remaining<=1?'var(--red)':remaining<=3?'var(--gold)':'var(--green)'}">⏳ ${remaining}h remaining</div>` : ''}
+        <button onclick="navigator.clipboard.writeText(${JSON.stringify(combinedMsg)}).then(()=>notify('Message copied ✓'))"
+          style="margin-top:8px;padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--gold);border-radius:6px;cursor:pointer;color:var(--gold);font-weight:600">
+          📋 Copy Full Message
         </button>
       </div>` : ''}
     </div>`;
