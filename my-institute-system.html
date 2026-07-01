@@ -460,9 +460,9 @@ button:hover{opacity:.85}
       <input id="edit-teacher-rate" type="number" min="0" step="0.5" placeholder="5"/>
     </div>
     <div class="form-group">
-      <label class="label">Hours (this month – manual override)</label>
+      <label class="label">Hours (this month – correct total)</label>
       <input id="edit-teacher-hours" type="number" min="0" step="0.5" placeholder="0"/>
-      <div class="f12 muted mt8">ℹ️ Overrides the auto-calculated hours from student logs</div>
+      <div class="f12 muted mt8">ℹ️ Set the correct total hours for this month. Any sessions logged after this will keep adding on top automatically. Leave empty to go back to fully automatic calculation.</div>
     </div>
     <div class="form-group">
       <label class="label">Bonus / Extra Pay ($)</label>
@@ -844,13 +844,16 @@ const rem = s => (s.hoursBought||0)-(s.hoursUsed||0);
 const badgeClass = r => r<=1?'badge-red':r<=3?'badge-amber':'badge-green';
 const teacherRate = t => t.rate||DEFAULT_TEACHER_RATE;
 
-// Effective hours for a teacher: manual override wins, else sum from students
+// Raw hours actually logged by this teacher's students (ignores any manual adjustment)
+const teacherAutoHours = tid => students.filter(s=>s.teacherId===tid).reduce((a,s)=>a+(s.hoursUsed||0),0);
+
+// Effective hours for a teacher: auto-calculated hours + a manual adjustment (if any).
+// The adjustment is a fixed offset set once by the admin (e.g. to correct a wrong entry),
+// and new sessions logged afterwards keep adding on top of it automatically.
 const teacherHours = tid => {
   const t = teachers.find(t=>t.id===tid);
-  if (t && t.hoursOverride !== null && t.hoursOverride !== undefined && t.hoursOverride !== '') {
-    return parseFloat(t.hoursOverride)||0;
-  }
-  return students.filter(s=>s.teacherId===tid).reduce((a,s)=>a+(s.hoursUsed||0),0);
+  const adj = (t && t.hoursOverride !== null && t.hoursOverride !== undefined && t.hoursOverride !== '') ? (parseFloat(t.hoursOverride)||0) : 0;
+  return teacherAutoHours(tid) + adj;
 };
 const teacherStudents = tid => students.filter(s=>s.teacherId===tid);
 const getUsdRate = () => parseFloat(document.getElementById('usd-rate')?.value)||0;
@@ -1052,7 +1055,7 @@ const openEditTeacher=tid=>{ const t=teachers.find(t=>t.id===tid); if(!t) return
   document.getElementById('edit-teacher-email').value=t.email||'';
   document.getElementById('edit-teacher-joined').value=t.joinedAt||'';
   document.getElementById('edit-teacher-rate').value=t.rate||DEFAULT_TEACHER_RATE;
-  document.getElementById('edit-teacher-hours').value=t.hoursOverride!==null&&t.hoursOverride!==undefined?t.hoursOverride:'';
+  document.getElementById('edit-teacher-hours').value=t.hoursOverride!==null&&t.hoursOverride!==undefined&&t.hoursOverride!==''?teacherHours(t.id):'';
   document.getElementById('edit-teacher-bonus').value=t.bonus||0;
   document.getElementById('edit-teacher-bonus-note').value=t.bonusNote||'';
   document.getElementById('edit-teacher-overlay').style.display='flex';
@@ -1063,12 +1066,15 @@ const saveEditTeacher=()=>{
   const name=document.getElementById('edit-teacher-name').value.trim();
   if(!name) return notify('Name is required',false);
   const hoursVal=document.getElementById('edit-teacher-hours').value.trim();
+  // The admin types the correct TOTAL hours for this month; we store it as an offset
+  // from the auto-calculated hours, so future logged sessions keep adding on top.
+  const hoursOverride = hoursVal===''? null : (parseFloat(hoursVal)||0) - teacherAutoHours(tid);
   teachers=teachers.map(t=>t.id!==tid?t:{...t,
     name,
     email:document.getElementById('edit-teacher-email').value.trim(),
     joinedAt:document.getElementById('edit-teacher-joined').value.trim()||t.joinedAt,
     rate:parseFloat(document.getElementById('edit-teacher-rate').value)||DEFAULT_TEACHER_RATE,
-    hoursOverride:hoursVal===''?null:parseFloat(hoursVal),
+    hoursOverride,
     bonus:parseFloat(document.getElementById('edit-teacher-bonus').value)||0,
     bonusNote:document.getElementById('edit-teacher-bonus-note').value.trim(),
   });
@@ -1620,7 +1626,7 @@ const loadAttendance = async (forceRefresh=false) => {
   if (historyRows.length > 0) {
     html += `<details style="margin-top:12px">
       <summary class="f13 muted" style="cursor:pointer;padding:8px 0">🗂️ Previous Days (${historyRows.length} records)</summary>
-      <div class="card mt8">${historyRows.slice(0,100).map(r => renderRow(r, false)).join('')}</div>
+      <div class="card mt8">${historyRows.slice(0,100).map(r => renderRow(r, true)).join('')}</div>
     </details>`;
   }
 
