@@ -221,6 +221,16 @@ button:hover{opacity:.85}
         <select id="new-student-teacher"><option value="">Select teacher...</option></select>
       </div>
       <div class="form-group"><label class="label">Hours Purchased</label><input id="new-student-hours" type="number" min="1" step="0.5" placeholder="4"/></div>
+      <div class="flex gap8">
+        <div class="form-group flex1"><label class="label">Rate / Hour *</label><input id="new-student-rate" type="number" min="0" step="0.5" placeholder="7"/></div>
+        <div class="form-group" style="width:120px"><label class="label">Currency</label>
+          <select id="new-student-currency">
+            <option value="GBP">£ GBP</option>
+            <option value="USD">$ USD</option>
+            <option value="EUR">€ EUR</option>
+          </select>
+        </div>
+      </div>
       <div class="form-group">
         <label class="label">Student Type</label>
         <div class="flex gap12 items-center" style="padding:10px 0">
@@ -481,6 +491,16 @@ button:hover{opacity:.85}
     </div>
     <div class="form-group"><label class="label">Hours Purchased (Bag)</label><input id="edit-student-bought" type="number" min="0" step="0.5" placeholder="8"/></div>
     <div class="form-group"><label class="label">Hours Used (This Month)</label><input id="edit-student-used" type="number" min="0" step="0.5" placeholder="0"/></div>
+    <div class="flex gap8">
+      <div class="form-group flex1"><label class="label">Rate / Hour</label><input id="edit-student-rate" type="number" min="0" step="0.5" placeholder="7"/></div>
+      <div class="form-group" style="width:120px"><label class="label">Currency</label>
+        <select id="edit-student-currency">
+          <option value="GBP">£ GBP</option>
+          <option value="USD">$ USD</option>
+          <option value="EUR">€ EUR</option>
+        </select>
+      </div>
+    </div>
     <div class="form-group"><label class="label">Promo Code</label><input id="edit-student-code" class="mono" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()" placeholder="MY-XXXX123"/></div>
     <div class="form-group"><label class="label">Joined Date</label><input id="edit-student-joined" placeholder="01/01/2024"/></div>
     <div class="flex gap8 mt8">
@@ -531,6 +551,7 @@ button:hover{opacity:.85}
 // ── Constants & Storage ───────────────────────────────────────────────────────
 const DEFAULT_TEACHER_RATE = 5;
 const STUDENT_RATE = 7;
+const currSymbol = c => c==='USD'?'$':c==='EUR'?'€':'£';
 const INSTITUTE_NAME = 'MY Institute';
 const INSTITUTE_WEBSITE = 'my-institute.com';
 const INSTITUTE_WHATSAPP = '+20 XXX XXX XXXX'; // TODO: replace with your WhatsApp number
@@ -598,12 +619,12 @@ const teacherFromDb = r => ({
 const studentToDb = s => ({
   id:s.id, name:s.name, email:s.email||'', teacher_id:s.teacherId||null,
   hours_bought:s.hoursBought||0, hours_used:s.hoursUsed||0, code:s.code||'', joined_at:s.joinedAt||'',
-  is_trial: s.isTrial||false
+  is_trial: s.isTrial||false, rate:s.rate||0, currency:s.currency||'GBP'
 });
 const studentFromDb = r => ({
   id:r.id, name:r.name, email:r.email||'', teacherId:r.teacher_id||'',
   hoursBought:r.hours_bought||0, hoursUsed:r.hours_used||0, code:r.code||'', joinedAt:r.joined_at||'',
-  isTrial: r.is_trial||false
+  isTrial: r.is_trial||false, rate:r.rate||0, currency:r.currency||'GBP'
 });
 const scheduleToDb = p => ({ id:p.id, student_id:p.studentId||null, subject:p.subject||'', days:p.days||[] });
 const scheduleFromDb = r => ({ id:r.id, studentId:r.student_id||'', subject:r.subject||'', days:r.days||[] });
@@ -948,10 +969,12 @@ const addStudent = () => {
   const email=document.getElementById('new-student-email').value.trim();
   const tid=document.getElementById('new-student-teacher').value;
   const hours=parseFloat(document.getElementById('new-student-hours').value)||0;
+  const rate=parseFloat(document.getElementById('new-student-rate').value)||0;
+  const currency=document.getElementById('new-student-currency').value||'GBP';
   const isTrial=document.getElementById('new-student-type-trial').checked;
   if (!name||!tid) return notify('Fill all required fields',false);
   const code=genCode(name);
-  students.push({id:uid(),name,email,teacherId:tid,code,hoursBought:isTrial?1:hours,hoursUsed:0,joinedAt:new Date().toLocaleDateString('en-GB'),isTrial});
+  students.push({id:uid(),name,email,teacherId:tid,code,hoursBought:isTrial?1:hours,hoursUsed:0,joinedAt:new Date().toLocaleDateString('en-GB'),isTrial,rate,currency});
   persist(); notify(name+' added · Code: '+code+(isTrial?' 🎯 Trial':''));
   logAction('Added student', name+(isTrial?' [Trial]':''));
   ['new-student-name','new-student-email','new-student-hours'].forEach(id=>document.getElementById(id).value='');
@@ -1056,6 +1079,8 @@ const openEditStudent=sid=>{ const s=students.find(s=>s.id===sid); if(!s) return
   document.getElementById('edit-student-email').value=s.email||'';
   document.getElementById('edit-student-bought').value=s.hoursBought||0;
   document.getElementById('edit-student-used').value=s.hoursUsed||0;
+  document.getElementById('edit-student-rate').value=s.rate||0;
+  document.getElementById('edit-student-currency').value=s.currency||'GBP';
   document.getElementById('edit-student-code').value=s.code||'';
   document.getElementById('edit-student-joined').value=s.joinedAt||'';
   const sel=document.getElementById('edit-student-teacher');
@@ -1073,6 +1098,8 @@ const saveEditStudent=()=>{
     teacherId:document.getElementById('edit-student-teacher').value,
     hoursBought:parseFloat(document.getElementById('edit-student-bought').value)||0,
     hoursUsed:parseFloat(document.getElementById('edit-student-used').value)||0,
+    rate:parseFloat(document.getElementById('edit-student-rate').value)||0,
+    currency:document.getElementById('edit-student-currency').value||'GBP',
     code:document.getElementById('edit-student-code').value.trim().toUpperCase()||s.code,
     joinedAt:document.getElementById('edit-student-joined').value.trim()||s.joinedAt,
   });
@@ -1089,7 +1116,7 @@ const renderDashboard=()=>{
     {label:'Students',value:students.length,icon:'📚',color:'var(--gold)'},
     {label:'Hours Taught',value:totalHours+'h',icon:'⏱',color:'var(--green)'},
     {label:'Teacher Salaries',value:'$'+totalSalary.toFixed(2),icon:'💵',color:'var(--red)'},
-    {label:'Revenue',value:'£'+(totalHours*STUDENT_RATE).toFixed(2),icon:'💷',color:'var(--green)'},
+    {label:'Revenue',value:'£'+(students.reduce((a,s)=>a+(s.hoursUsed||0)*(s.rate||STUDENT_RATE),0)).toFixed(2),icon:'💷',color:'var(--green)'},
   ].map(c=>`<div class="card" style="border-left:3px solid ${c.color}"><div style="font-size:22px;margin-bottom:6px">${c.icon}</div><div style="font-size:26px;font-weight:700;color:${c.color}">${c.value}</div><div class="f12 muted mt4">${c.label}</div></div>`).join('');
 
   const lowHours=students.filter(s=>rem(s)<=1).sort((a,b)=>rem(a)-rem(b));
@@ -1180,7 +1207,7 @@ const renderStudents=()=>{
             <span class="badge badge-amber mono code-pill f12">${s.code}</span>
             ${isDebt?'<span class="badge badge-red">⚠️ Owes hours</span>':''}
           </div>
-          <div class="muted f12 mt4">Joined ${s.joinedAt}</div>
+          <div class="muted f12 mt4">Joined ${s.joinedAt} ${s.rate?`· <span class="gold">${currSymbol(s.currency)}${s.rate}/h</span>`:''}</div>
         </div>
         <div class="flex gap8 items-center flex-wrap">
           <span class="badge ${badgeClass(r)}">${isDebt?'−'+Math.abs(r)+'h owed':r+'h remaining'}</span>
@@ -1535,10 +1562,12 @@ const loadAttendance = async (forceRefresh=false) => {
     html += `<div class="card mb20">${todayRows.map(r => renderRow(r, true)).join('')}</div>`;
   }
 
-  // History
+  // History (collapsed, admin can expand)
   if (historyRows.length > 0) {
-    html += `<div class="f14 bold mb8 muted">🗂️ Previous Days (${historyRows.length})</div>`;
-    html += `<div class="card">${historyRows.slice(0,50).map(r => renderRow(r, false)).join('')}</div>`;
+    html += `<details style="margin-top:12px">
+      <summary class="f13 muted" style="cursor:pointer;padding:8px 0">🗂️ Previous Days (${historyRows.length} records)</summary>
+      <div class="card mt8">${historyRows.slice(0,100).map(r => renderRow(r, false)).join('')}</div>
+    </details>`;
   }
 
   el.innerHTML = html;
