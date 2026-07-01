@@ -801,12 +801,16 @@ const checkMonthlyReset = async () => {
   const last = await getSetting('mit_last_reset');
   if (last !== key) {
     if (last) await archiveCurrentMonth(last);
-    students = students.map(s=>({...s, hoursUsed:0}));
-    // also clear per-teacher manual hour overrides
+    // Carry over remaining hours: new hoursBought = what's left, reset hoursUsed to 0
+    students = students.map(s=>({
+      ...s,
+      hoursBought: Math.max(0,(s.hoursBought||0)-(s.hoursUsed||0)),
+      hoursUsed: 0
+    }));
     teachers = teachers.map(t=>({...t, hoursOverride:null, bonus:0, bonusNote:''}));
     await persist();
     await setSetting('mit_last_reset', key);
-    if (last) { notify('✨ New month — hours reset, previous month saved to History.', true); logAction('Automatic monthly reset', key); }
+    if (last) { notify('✨ New month — remaining hours carried over, previous month saved to History.', true); logAction('Automatic monthly reset', key); }
   }
 };
 
@@ -1023,7 +1027,7 @@ const applyPromo = () => {
 const manualReset = async () => {
   if (!confirm('Archive current data to History and reset all teacher hours to zero?')) return;
   await archiveCurrentMonth(currentMonthKey());
-  students=students.map(s=>({...s,hoursUsed:0}));
+  students=students.map(s=>({...s, hoursBought:Math.max(0,(s.hoursBought||0)-(s.hoursUsed||0)), hoursUsed:0}));
   teachers=teachers.map(t=>({...t,hoursOverride:null,bonus:0,bonusNote:''}));
   await persist();
   await setSetting('mit_last_reset',currentMonthKey());
