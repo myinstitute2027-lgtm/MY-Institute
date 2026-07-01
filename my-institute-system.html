@@ -1318,6 +1318,18 @@ const renderSalary=()=>{
 };
 
 // ── History ───────────────────────────────────────────────────────────────────
+const copyTeacherReport = id => {
+  const el = document.getElementById(id + '_text');
+  if (!el) return;
+  navigator.clipboard.writeText(el.value).then(()=>notify('Report copied ✓'));
+};
+
+const copyAttendanceMsg = id => {
+  const el = document.getElementById(id + '_text');
+  if (!el) return;
+  navigator.clipboard.writeText(el.value).then(()=>notify('Message copied ✓'));
+};
+
 const renderHistory=()=>{
   const sel = document.getElementById('history-month-select');
   if (!sel) return;
@@ -1362,6 +1374,7 @@ const renderHistory=()=>{
           ...t.students.map(s=>`  • ${s.name}: ${s.hoursUsed}h = $${s.amount.toFixed(2)}`),
         ].filter(l=>l!==undefined && !(l==='' && false)).join('\n');
 
+        const reportId = 'report_' + t.name.replace(/\s/g,'_');
         return `<div class="card mb12">
         <div class="flex justify-between items-center flex-wrap gap8 mb12">
           <div>
@@ -1373,12 +1386,13 @@ const renderHistory=()=>{
             <span class="badge badge-red">Base: $${t.baseSalary.toFixed(2)}</span>
             ${t.bonus>0?`<span class="badge badge-blue">Bonus: +$${t.bonus.toFixed(2)}</span>`:''}
             <span class="badge badge-red" style="font-weight:700">Total: $${t.total.toFixed(2)}</span>
-            <button onclick="navigator.clipboard.writeText(${JSON.stringify(reportText)}).then(()=>notify('Report copied ✓'))"
+            <button id="${reportId}" onclick="copyTeacherReport('${reportId}')"
               style="padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--gold);border-radius:6px;cursor:pointer;color:var(--gold)">
               📋 Copy Report
             </button>
           </div>
         </div>
+        <textarea id="${reportId}_text" style="display:none">${reportText}</textarea>
         <div style="border-top:1px solid var(--border);padding-top:12px">
           <div class="f12 muted mb8" style="text-transform:uppercase;letter-spacing:.5px">Breakdown by student</div>
           ${!t.students.length?'<div class="muted f13">No students recorded.</div>':
@@ -1559,6 +1573,7 @@ const loadAttendance = async (forceRefresh=false) => {
       remaining === 0 ? `⚠️ Please renew your hours to continue sessions.` : '',
     ].filter(Boolean).join('\n');
 
+    const msgId = 'msg_' + r.id;
     return `<div class="salary-row" style="flex-direction:column;align-items:flex-start;gap:8px;padding:14px 0">
       <div class="flex justify-between items-center" style="width:100%">
         <div>
@@ -1578,7 +1593,8 @@ const loadAttendance = async (forceRefresh=false) => {
         <div class="f13">${homework}</div>
         ${sideNote ? `<div class="f12 muted mt4">💬 ${sideNote}</div>` : ''}
         ${remaining !== null ? `<div class="f12 mt4" style="color:${remaining<=1?'var(--red)':remaining<=3?'var(--gold)':'var(--green)'}">⏳ ${remaining}h remaining</div>` : ''}
-        <button onclick="navigator.clipboard.writeText(${JSON.stringify(combinedMsg)}).then(()=>notify('Message copied ✓'))"
+        <textarea id="${msgId}_text" style="display:none">${combinedMsg}</textarea>
+        <button onclick="copyAttendanceMsg('${msgId}')"
           style="margin-top:8px;padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--gold);border-radius:6px;cursor:pointer;color:var(--gold);font-weight:600">
           📋 Copy Full Message
         </button>
