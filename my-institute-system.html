@@ -76,9 +76,10 @@ button:hover{opacity:.85}
 .teacher-schedule-card{margin-bottom:16px}
 .sched-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
 .sched-day-badge{min-width:90px;font-weight:600;font-size:12px;color:var(--gold)}
-.sched-table{width:100%;border-collapse:collapse;font-size:13px}
-.sched-table th{text-align:left;padding:8px 10px;color:var(--gold);font-size:11px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border)}
-.sched-table td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text)}
+.sched-table{width:100%;border-collapse:collapse;font-size:13px;border:1px solid var(--border)}
+.sched-table th{text-align:left;padding:8px 10px;color:var(--gold);font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:var(--surface);border:1px solid var(--border)}
+.sched-table td{padding:8px 10px;border:1px solid var(--border);color:var(--text)}
+.sched-table tbody tr:nth-child(even){background:rgba(255,255,255,.02)}
 .sched-table tbody tr:hover{background:var(--bg)}
 .sched-table tbody tr{cursor:pointer}
 .sched-table td:first-child,.sched-table th:first-child{font-weight:600}
@@ -2213,6 +2214,52 @@ const renderConflictBanner = () => {
 };
 
 const renderWeekGrid = (search='') => {
+  if (search) {
+    // Search mode: one flat table sorted by day/time, not the day-column chip layout.
+    const rows = [];
+    DAYS.forEach(day => {
+      const daySessions = [];
+      schedules.forEach(pkg => {
+        const d = pkg.days.find(d=>d.day===day);
+        if (!d) return;
+        const stu = students.find(s=>s.id===pkg.studentId);
+        if (!(stu && matchesSchedSearch(stu, search))) return;
+        const teacher = stu ? teachers.find(t=>t.id===stu.teacherId) : null;
+        daySessions.push({pkg, d, stu, teacher});
+      });
+      daySessions.sort((a,b)=>a.d.start.localeCompare(b.d.start));
+
+      const conflictSids = new Set();
+      daySessions.forEach(({d:dA, pkg:pA},i)=>{
+        daySessions.forEach(({d:dB, pkg:pB},j)=>{
+          if(i>=j) return;
+          const stuA=students.find(s=>s.id===pA.studentId), stuB=students.find(s=>s.id===pB.studentId);
+          if(!stuA||!stuB||stuA.teacherId!==stuB.teacherId) return;
+          const as=timeToMins(dA.start),ae=as+(dA.dur||60),bs=timeToMins(dB.start),be=bs+(dB.dur||60);
+          if(as<be&&ae>bs){conflictSids.add(pA.studentId);conflictSids.add(pB.studentId);}
+        });
+      });
+
+      daySessions.forEach(({pkg,d,stu,teacher})=>{
+        const isConflict = conflictSids.has(pkg.studentId);
+        const c = studentColor(pkg.studentId);
+        rows.push(`<tr onclick="openEditSess('${pkg.studentId}','${day}')" style="${isConflict?'background:var(--red-bg)':''}">
+          <td style="color:${isConflict?'var(--red)':''}">${day}${isConflict?' ⚠️':''}</td>
+          <td style="font-family:'JetBrains Mono',monospace">${fmt12(d.start)}</td>
+          <td>${durLabel(d.dur||60)}</td>
+          <td style="color:${c.text}">${stu?.name||'—'}</td>
+          <td>${teacher?teacher.name:'—'}</td>
+          <td>${pkg.subject||'—'}</td>
+        </tr>`);
+      });
+    });
+
+    document.getElementById('week-grid').innerHTML = rows.length
+      ? `<div class="card"><table class="sched-table"><thead><tr><th>Day</th><th>Time</th><th>Duration</th><th>Student</th><th>Teacher</th><th>Subject</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`
+      : '<div class="card muted" style="text-align:center;padding:40px">No matches for your search.</div>';
+    return;
+  }
+
   const cols = DAYS.map(day => {
     // collect all sessions for this day across all packages
     const daySessions = [];
@@ -2220,7 +2267,6 @@ const renderWeekGrid = (search='') => {
       const d = pkg.days.find(d=>d.day===day);
       if (!d) return;
       const stu = students.find(s=>s.id===pkg.studentId);
-      if (search && !(stu && matchesSchedSearch(stu, search))) return;
       const teacher = stu ? teachers.find(t=>t.id===stu.teacherId) : null;
       daySessions.push({pkg, d, stu, teacher});
     });
@@ -2255,7 +2301,7 @@ const renderWeekGrid = (search='') => {
 
     return `<div class="week-col">
       <div class="week-col-head">${day}</div>
-      <div class="week-col-body">${chips||`<div style="color:var(--muted);font-size:11px;text-align:center;padding:12px 0">${search?'No matches':'Free'}</div>`}</div>
+      <div class="week-col-body">${chips||'<div style="color:var(--muted);font-size:11px;text-align:center;padding:12px 0">Free</div>'}</div>
     </div>`;
   }).join('');
 
