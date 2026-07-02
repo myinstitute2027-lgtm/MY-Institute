@@ -733,6 +733,23 @@ const persist = async () => {
   } catch(e) { notify('⚠️ Could not save to database: '+e.message, false); }
 };
 
+// Save ONLY the specific student/teacher row(s) that changed, instead of the entire
+// in-memory list. This matters because if an admin leaves a tab open, their local
+// `students`/`teachers` arrays go stale; if that stale full array is ever pushed to
+// the DB (via persist()), it silently overwrites everyone else's recent changes —
+// e.g. a teacher's attendance deduction gets wiped out by an unrelated admin action.
+// Scoped saves avoid that class of bug entirely.
+const persistStudentRow = async (student) => {
+  if (!student) return;
+  try { await sbUpsert('students', [student], studentToDb); }
+  catch(e) { notify('⚠️ Could not save to database: '+e.message, false); }
+};
+const persistTeacherRow = async (teacher) => {
+  if (!teacher) return;
+  try { await sbUpsert('teachers', [teacher], teacherToDb); }
+  catch(e) { notify('⚠️ Could not save to database: '+e.message, false); }
+};
+
 // ── History / Archive ───────────────────────────────────────────────────────
 let history = [];
 const persistHistory = async () => {
@@ -954,8 +971,9 @@ const addTeacher = () => {
   const name=document.getElementById('new-teacher-name').value.trim();
   const email=document.getElementById('new-teacher-email').value.trim();
   if (!name) return notify('Enter teacher name',false);
-  teachers.push({id:uid(),name,email,joinedAt:new Date().toLocaleDateString('en-GB'),rate:DEFAULT_TEACHER_RATE,hoursOverride:null,bonus:0,bonusNote:''});
-  persist(); notify(name+' added ✓');
+  const newTeacher = {id:uid(),name,email,joinedAt:new Date().toLocaleDateString('en-GB'),rate:DEFAULT_TEACHER_RATE,hoursOverride:null,bonus:0,bonusNote:''};
+  teachers.push(newTeacher);
+  persistTeacherRow(newTeacher); notify(name+' added ✓');
   logAction('Added teacher', name);
   document.getElementById('new-teacher-name').value='';
   document.getElementById('new-teacher-email').value='';
@@ -981,8 +999,9 @@ const addStudent = () => {
   const isTrial=document.getElementById('new-student-type-trial').checked;
   if (!name||!tid) return notify('Fill all required fields',false);
   const code=genCode(name);
-  students.push({id:uid(),name,email,teacherId:tid,code,hoursBought:isTrial?1:hours,hoursUsed:0,joinedAt:new Date().toLocaleDateString('en-GB'),isTrial,rate,currency});
-  persist(); notify(name+' added · Code: '+code+(isTrial?' 🎯 Trial':''));
+  const newStudent = {id:uid(),name,email,teacherId:tid,code,hoursBought:isTrial?1:hours,hoursUsed:0,joinedAt:new Date().toLocaleDateString('en-GB'),isTrial,rate,currency};
+  students.push(newStudent);
+  persistStudentRow(newStudent); notify(name+' added · Code: '+code+(isTrial?' 🎯 Trial':''));
   logAction('Added student', name+(isTrial?' [Trial]':''));
   ['new-student-name','new-student-email','new-student-hours'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('new-student-teacher').value='';
@@ -1002,8 +1021,9 @@ const deleteStudent = sid => {
 const logHours = (sid,delta) => {
   const h=parseFloat(document.getElementById('hrs-'+sid)?.value)||1;
   const s = students.find(s=>s.id===sid);
-  students=students.map(s=> s.id!==sid?s:{...s,hoursUsed:Math.max(0,(s.hoursUsed||0)+h*delta)});
-  persist(); renderAll();
+  let updatedStudent;
+  students=students.map(s=> s.id!==sid?s:(updatedStudent={...s,hoursUsed:Math.max(0,(s.hoursUsed||0)+h*delta)}));
+  persistStudentRow(updatedStudent); renderAll();
   logAction(delta>0?'Logged hours':'Removed hours', `${s?.name||sid}: ${delta>0?'+':'-'}${h}h`);
 };
 
@@ -1011,8 +1031,9 @@ const topUpHours = sid => {
   const h=parseFloat(document.getElementById('buy-'+sid)?.value);
   if(!h||h<=0) return notify('Invalid hours',false);
   const s = students.find(s=>s.id===sid);
-  students=students.map(s=> s.id===sid?{...s,hoursBought:(s.hoursBought||0)+h}:s);
-  persist(); notify(h+'h added ✓'); renderAll();
+  let updatedStudent;
+  students=students.map(s=> s.id===sid?(updatedStudent={...s,hoursBought:(s.hoursBought||0)+h}):s);
+  persistStudentRow(updatedStudent); notify(h+'h added ✓'); renderAll();
   logAction('Topped up hours', `${s?.name||sid}: +${h}h`);
 };
 
@@ -1022,8 +1043,9 @@ const applyPromo = () => {
   if(!code||!newName) return notify('Fill all fields',false);
   const referrer=students.find(s=>s.code===code);
   if(!referrer) return notify('Code not found!',false);
-  students=students.map(s=> s.id===referrer.id?{...s,hoursBought:(s.hoursBought||0)+1}:s);
-  persist(); notify(referrer.name+' earned +1 hour 🎉'); closeModal(); renderAll();
+  let updatedReferrer;
+  students=students.map(s=> s.id===referrer.id?(updatedReferrer={...s,hoursBought:(s.hoursBought||0)+1}):s);
+  persistStudentRow(updatedReferrer); notify(referrer.name+' earned +1 hour 🎉'); closeModal(); renderAll();
   logAction('Applied promo code', `${code} → ${referrer.name} (+1h), referred by ${newName}`);
 };
 
@@ -1069,7 +1091,8 @@ const saveEditTeacher=()=>{
   // The admin types the correct TOTAL hours for this month; we store it as an offset
   // from the auto-calculated hours, so future logged sessions keep adding on top.
   const hoursOverride = hoursVal===''? null : (parseFloat(hoursVal)||0) - teacherAutoHours(tid);
-  teachers=teachers.map(t=>t.id!==tid?t:{...t,
+  let updatedTeacher;
+  teachers=teachers.map(t=>t.id!==tid?t:(updatedTeacher={...t,
     name,
     email:document.getElementById('edit-teacher-email').value.trim(),
     joinedAt:document.getElementById('edit-teacher-joined').value.trim()||t.joinedAt,
@@ -1077,8 +1100,8 @@ const saveEditTeacher=()=>{
     hoursOverride,
     bonus:parseFloat(document.getElementById('edit-teacher-bonus').value)||0,
     bonusNote:document.getElementById('edit-teacher-bonus-note').value.trim(),
-  });
-  persist(); notify(name+' updated ✓'); closeEditTeacher(); renderAll();
+  }));
+  persistTeacherRow(updatedTeacher); notify(name+' updated ✓'); closeEditTeacher(); renderAll();
   logAction('Edited teacher', name);
 };
 
@@ -1102,7 +1125,8 @@ const saveEditStudent=()=>{
   const sid=document.getElementById('edit-student-id').value;
   const name=document.getElementById('edit-student-name').value.trim();
   if(!name) return notify('Name is required',false);
-  students=students.map(s=>s.id!==sid?s:{...s,
+  let updatedStudent;
+  students=students.map(s=>s.id!==sid?s:(updatedStudent={...s,
     name,
     email:document.getElementById('edit-student-email').value.trim(),
     teacherId:document.getElementById('edit-student-teacher').value,
@@ -1112,8 +1136,8 @@ const saveEditStudent=()=>{
     currency:document.getElementById('edit-student-currency').value||'GBP',
     code:document.getElementById('edit-student-code').value.trim().toUpperCase()||s.code,
     joinedAt:document.getElementById('edit-student-joined').value.trim()||s.joinedAt,
-  });
-  persist(); notify(name+' updated ✓'); closeEditStudent(); renderAll();
+  }));
+  persistStudentRow(updatedStudent); notify(name+' updated ✓'); closeEditStudent(); renderAll();
   logAction('Edited student', name);
 };
 
@@ -1505,8 +1529,9 @@ const submitAttendance = async () => {
   } catch(e) { /* non-fatal */ }
 
   // Log hours
-  students = students.map(s => s.id === sid ? {...s, hoursUsed: (s.hoursUsed||0) + hours} : s);
-  persist();
+  let updatedStudent;
+  students = students.map(s => s.id === sid ? (updatedStudent = {...s, hoursUsed: (s.hoursUsed||0) + hours}) : s);
+  persistStudentRow(updatedStudent);
 
   // Save to DB
   try {
@@ -1650,8 +1675,9 @@ const deleteAttendance = async (aid, sid, hours) => {
   if (!confirm('Cancel this attendance and reverse the hours?')) return;
   try {
     await sbFetch(`attendance_log?id=eq.${aid}`, { method: 'DELETE' });
-    students = students.map(s => s.id === sid ? {...s, hoursUsed: Math.max(0,(s.hoursUsed||0)-hours)} : s);
-    persist();
+    let updatedStudent;
+    students = students.map(s => s.id === sid ? (updatedStudent = {...s, hoursUsed: Math.max(0,(s.hoursUsed||0)-hours)}) : s);
+    persistStudentRow(updatedStudent);
     attendanceCache = null;
     notify('↩️ Attendance cancelled and hours reversed', true);
     renderAll();
