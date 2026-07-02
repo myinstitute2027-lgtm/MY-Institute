@@ -2274,32 +2274,47 @@ const renderStudentScheduleView = (search='') => {
     html = '<div class="card muted" style="text-align:center;padding:40px">No students yet.</div>';
   } else if (!sortedStu.length) {
     html = '<div class="card muted" style="text-align:center;padding:40px">No students match your search.</div>';
+  } else if (search) {
+    // Search mode: one flat table across all matched students, not a card per student.
+    const rows = [];
+    withSched.forEach(stu => {
+      const pkg = schedules.find(p=>p.studentId===stu.id);
+      const teacher = teachers.find(t=>t.id===stu.teacherId);
+      const c = studentColor(stu.id);
+      DAYS.filter(d=>pkg.days.find(pd=>pd.day===d)).forEach(day=>{
+        const d = pkg.days.find(pd=>pd.day===day);
+        rows.push(`<tr onclick="openEditSess('${stu.id}','${day}')">
+          <td style="color:${c.text}">${stu.name}</td>
+          <td>${teacher?teacher.name:'—'}</td>
+          <td>${day}</td>
+          <td style="font-family:'JetBrains Mono',monospace">${fmt12(d.start)}</td>
+          <td>${durLabel(d.dur||60)}</td>
+          <td>${pkg.subject||'—'}</td>
+        </tr>`);
+      });
+    });
+    html = rows.length
+      ? `<div class="card"><table class="sched-table"><thead><tr><th>Student</th><th>Teacher</th><th>Day</th><th>Time</th><th>Duration</th><th>Subject</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`
+      : '<div class="card muted" style="text-align:center;padding:40px">No schedule found for this search.</div>';
+    if (noSched.length) {
+      html += `<div class="card mt8" style="border-left:3px solid var(--border)">
+        <div class="f13 muted bold mb8">No schedule set</div>
+        ${noSched.map(s=>`<span class="student-pill" style="cursor:pointer" onclick="openStudentScheduleModal()">+ ${s.name}</span>`).join('')}
+      </div>`;
+    }
   } else {
     withSched.forEach(stu => {
       const pkg = schedules.find(p=>p.studentId===stu.id);
       const teacher = teachers.find(t=>t.id===stu.teacherId);
       const c = studentColor(stu.id);
-      const sortedDays = DAYS.filter(d=>pkg.days.find(pd=>pd.day===d));
-      const daysBody = search
-        ? `<table class="sched-table"><thead><tr><th>Day</th><th>Time</th><th>Duration</th><th>Subject</th></tr></thead><tbody>
-            ${sortedDays.map(day=>{
-              const d = pkg.days.find(pd=>pd.day===day);
-              return `<tr onclick="openEditSess('${stu.id}','${day}')">
-                <td style="color:${c.text}">${day}</td>
-                <td style="font-family:'JetBrains Mono',monospace">${fmt12(d.start)}</td>
-                <td>${durLabel(d.dur||60)}</td>
-                <td>${pkg.subject||'—'}</td>
-              </tr>`;
-            }).join('')}
-          </tbody></table>`
-        : sortedDays.map(day=>{
-            const d = pkg.days.find(pd=>pd.day===day);
-            return `<div class="sched-row">
-              <span class="sched-day-badge">${day}</span>
-              <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:${c.text}">${fmtSess(d.start,d.dur)}</span>
-              ${pkg.subject?`<span class="badge" style="background:${c.bg};border:1px solid ${c.border};color:${c.text};margin-left:4px">${pkg.subject}</span>`:''}
-            </div>`;
-          }).join('');
+      const daysHtml = DAYS.filter(d=>pkg.days.find(pd=>pd.day===d)).map(day=>{
+        const d = pkg.days.find(pd=>pd.day===day);
+        return `<div class="sched-row">
+          <span class="sched-day-badge">${day}</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:${c.text}">${fmtSess(d.start,d.dur)}</span>
+          ${pkg.subject?`<span class="badge" style="background:${c.bg};border:1px solid ${c.border};color:${c.text};margin-left:4px">${pkg.subject}</span>`:''}
+        </div>`;
+      }).join('');
       html += `<div class="card teacher-schedule-card" style="border-left:3px solid ${c.text}">
         <div class="flex justify-between items-center mb8 flex-wrap gap8">
           <div>
@@ -2311,7 +2326,7 @@ const renderStudentScheduleView = (search='') => {
             <button class="btn-ghost" style="font-size:12px;padding:5px 12px" onclick="openStudentScheduleModal('${stu.id}')">✏️ Edit</button>
           </div>
         </div>
-        ${daysBody}
+        ${daysHtml}
       </div>`;
     });
     if (noSched.length) {
@@ -2330,18 +2345,14 @@ const renderTeacherScheduleView = (search='') => {
     return;
   }
   const sorted = [...teachers].sort((a,b)=>a.name.localeCompare(b.name));
-  const cardsHtml = sorted.map(t => {
-    const c = teacherColorByIdx(t.id);
-    // get all students of this teacher who have schedules
-    const teacherNameMatches = search && t.name.toLowerCase().includes(search);
-    const tStudents = students.filter(s=>s.teacherId===t.id && (!search || teacherNameMatches || s.name.toLowerCase().includes(search)));
-    if (search && !tStudents.length) return '';
-    const tSchedules = tStudents.map(s=>({stu:s, pkg:schedules.find(p=>p.studentId===s.id)})).filter(x=>x.pkg);
 
-    // build day-grouped view (or a flat table when searching for a specific student)
-    let byDay;
-    if (search) {
-      const rows = [];
+  if (search) {
+    // Search mode: one flat table across all matched teachers/students, not a card per teacher.
+    const rows = [];
+    sorted.forEach(t => {
+      const teacherNameMatches = t.name.toLowerCase().includes(search);
+      const tStudents = students.filter(s=>s.teacherId===t.id && (teacherNameMatches || s.name.toLowerCase().includes(search)));
+      const tSchedules = tStudents.map(s=>({stu:s, pkg:schedules.find(p=>p.studentId===s.id)})).filter(x=>x.pkg);
       DAYS.forEach(day=>{
         tSchedules.forEach(({stu,pkg})=>{
           const d = pkg.days.find(pd=>pd.day===day);
@@ -2351,38 +2362,46 @@ const renderTeacherScheduleView = (search='') => {
           const ds=timeToMins(d.start),de=ds+(d.dur||60);
           const isConflict = otherSess.some(od=>{ const os=timeToMins(od.start),oe=os+(od.dur||60); return ds<oe&&de>os; });
           rows.push(`<tr onclick="openEditSess('${stu.id}','${day}')" style="${isConflict?'background:var(--red-bg)':''}">
-            <td style="color:${isConflict?'var(--red)':c.text}">${day}${isConflict?' ⚠️':''}</td>
+            <td>${t.name}</td>
+            <td style="color:${sc.text}">${stu.name}</td>
+            <td style="color:${isConflict?'var(--red)':''}">${day}${isConflict?' ⚠️':''}</td>
             <td style="font-family:'JetBrains Mono',monospace">${fmt12(d.start)}</td>
             <td>${durLabel(d.dur||60)}</td>
-            <td style="color:${sc.text}">${stu.name}</td>
             <td>${pkg.subject||'—'}</td>
           </tr>`);
         });
       });
-      byDay = rows.length
-        ? `<table class="sched-table"><thead><tr><th>Day</th><th>Time</th><th>Duration</th><th>Student</th><th>Subject</th></tr></thead><tbody>${rows.join('')}</tbody></table>`
-        : '';
-    } else {
-      byDay = DAYS.map(day=>{
-        const daySess = tSchedules.filter(({pkg})=>pkg.days.find(d=>d.day===day));
-        if (!daySess.length) return '';
-        return daySess.map(({stu,pkg})=>{
-          const d = pkg.days.find(d=>d.day===day);
-          const sc = studentColor(stu.id);
-          // check conflict with other students of same teacher on this day+time
-          const otherSess = tSchedules.filter(x=>x.stu.id!==stu.id).map(x=>x.pkg.days.find(pd=>pd.day===day)).filter(Boolean);
-          const ds=timeToMins(d.start),de=ds+(d.dur||60);
-          const isConflict = otherSess.some(od=>{ const os=timeToMins(od.start),oe=os+(od.dur||60); return ds<oe&&de>os; });
-          return `<div class="sched-row" style="${isConflict?'background:var(--red-bg);border-radius:6px;padding:4px 8px;':''}cursor:pointer" onclick="openEditSess('${stu.id}','${day}')">
-            <span class="sched-day-badge">${day}</span>
-            ${isConflict?'<span style="color:var(--red);font-size:11px;font-weight:700">⚠️</span>':''}
-            <span style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:${isConflict?'var(--red)':c.text}">${fmtSess(d.start,d.dur)}</span>
-            <span class="badge" style="background:${sc.bg};border:1px solid ${sc.border};color:${sc.text}">${stu.name}</span>
-            ${pkg.subject?`<span class="badge badge-blue" style="font-size:11px">${pkg.subject}</span>`:''}
-          </div>`;
-        }).join('');
+    });
+    document.getElementById('teacher-schedule-list').innerHTML = rows.length
+      ? `<div class="card"><table class="sched-table"><thead><tr><th>Teacher</th><th>Student</th><th>Day</th><th>Time</th><th>Duration</th><th>Subject</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`
+      : '<div class="card muted" style="text-align:center;padding:40px">No students match your search.</div>';
+    return;
+  }
+
+  document.getElementById('teacher-schedule-list').innerHTML = sorted.map(t => {
+    const c = teacherColorByIdx(t.id);
+    const tStudents = students.filter(s=>s.teacherId===t.id);
+    const tSchedules = tStudents.map(s=>({stu:s, pkg:schedules.find(p=>p.studentId===s.id)})).filter(x=>x.pkg);
+
+    const byDay = DAYS.map(day=>{
+      const daySess = tSchedules.filter(({pkg})=>pkg.days.find(d=>d.day===day));
+      if (!daySess.length) return '';
+      return daySess.map(({stu,pkg})=>{
+        const d = pkg.days.find(d=>d.day===day);
+        const sc = studentColor(stu.id);
+        // check conflict with other students of same teacher on this day+time
+        const otherSess = tSchedules.filter(x=>x.stu.id!==stu.id).map(x=>x.pkg.days.find(pd=>pd.day===day)).filter(Boolean);
+        const ds=timeToMins(d.start),de=ds+(d.dur||60);
+        const isConflict = otherSess.some(od=>{ const os=timeToMins(od.start),oe=os+(od.dur||60); return ds<oe&&de>os; });
+        return `<div class="sched-row" style="${isConflict?'background:var(--red-bg);border-radius:6px;padding:4px 8px;':''}cursor:pointer" onclick="openEditSess('${stu.id}','${day}')">
+          <span class="sched-day-badge">${day}</span>
+          ${isConflict?'<span style="color:var(--red);font-size:11px;font-weight:700">⚠️</span>':''}
+          <span style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:${isConflict?'var(--red)':c.text}">${fmtSess(d.start,d.dur)}</span>
+          <span class="badge" style="background:${sc.bg};border:1px solid ${sc.border};color:${sc.text}">${stu.name}</span>
+          ${pkg.subject?`<span class="badge badge-blue" style="font-size:11px">${pkg.subject}</span>`:''}
+        </div>`;
       }).join('');
-    }
+    }).join('');
 
     const totalSess = tSchedules.reduce((a,{pkg})=>a+pkg.days.length,0);
     return `<div class="card teacher-schedule-card" style="border-left:3px solid ${c.text}">
@@ -2393,8 +2412,6 @@ const renderTeacherScheduleView = (search='') => {
       ${byDay||'<div class="muted f13">No student sessions scheduled.</div>'}
     </div>`;
   }).join('');
-  document.getElementById('teacher-schedule-list').innerHTML = cardsHtml ||
-    `<div class="card muted" style="text-align:center;padding:40px">${search?'No students match your search.':'No teachers yet.'}</div>`;
 };
 
 // ── Init ──────────────────────────────────────────────────────────────────────
