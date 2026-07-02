@@ -1854,6 +1854,13 @@ const persistSchedules = async () => {
 };
 
 const DAYS = ['Saturday','Sunday','Monday','Tuesday','Wednesday','Thursday','Friday'];
+// Search box on the Schedules page should match either a student's name or their teacher's name.
+const matchesSchedSearch = (stu, search) => {
+  if (!search) return true;
+  if ((stu.name||'').toLowerCase().includes(search)) return true;
+  const teacher = teachers.find(t=>t.id===stu.teacherId);
+  return !!(teacher && teacher.name.toLowerCase().includes(search));
+};
 const CHIP_COLORS = [
   {bg:'#0d2240',border:'#1e4a80',text:'#58a6ff'},
   {bg:'#0f2d1a',border:'#2a6b40',text:'#5dba7e'},
@@ -2213,7 +2220,7 @@ const renderWeekGrid = (search='') => {
       const d = pkg.days.find(d=>d.day===day);
       if (!d) return;
       const stu = students.find(s=>s.id===pkg.studentId);
-      if (search && !(stu && stu.name.toLowerCase().includes(search))) return;
+      if (search && !(stu && matchesSchedSearch(stu, search))) return;
       const teacher = stu ? teachers.find(t=>t.id===stu.teacherId) : null;
       daySessions.push({pkg, d, stu, teacher});
     });
@@ -2258,7 +2265,7 @@ const renderWeekGrid = (search='') => {
 
 const renderStudentScheduleView = (search='') => {
   const sortedStu = [...students].sort((a,b)=>a.name.localeCompare(b.name))
-    .filter(s=>!search || s.name.toLowerCase().includes(search));
+    .filter(s=>matchesSchedSearch(s, search));
   const withSched = sortedStu.filter(s=>schedules.find(p=>p.studentId===s.id));
   const noSched   = sortedStu.filter(s=>!schedules.find(p=>p.studentId===s.id));
 
@@ -2326,7 +2333,8 @@ const renderTeacherScheduleView = (search='') => {
   const cardsHtml = sorted.map(t => {
     const c = teacherColorByIdx(t.id);
     // get all students of this teacher who have schedules
-    const tStudents = students.filter(s=>s.teacherId===t.id && (!search || s.name.toLowerCase().includes(search)));
+    const teacherNameMatches = search && t.name.toLowerCase().includes(search);
+    const tStudents = students.filter(s=>s.teacherId===t.id && (!search || teacherNameMatches || s.name.toLowerCase().includes(search)));
     if (search && !tStudents.length) return '';
     const tSchedules = tStudents.map(s=>({stu:s, pkg:schedules.find(p=>p.studentId===s.id)})).filter(x=>x.pkg);
 
