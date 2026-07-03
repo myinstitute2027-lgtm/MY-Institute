@@ -343,7 +343,9 @@ button:hover{opacity:.85}
 
     <div class="form-group">
       <label class="label">Student *</label>
-      <select id="stu-sched-student" onchange="onScheduleStudentChange()"></select>
+      <input type="text" id="stu-sched-student-input" list="stu-sched-datalist" placeholder="Type student name..." autocomplete="off" oninput="onScheduleStudentNameInput()"/>
+      <datalist id="stu-sched-datalist"></datalist>
+      <input type="hidden" id="stu-sched-student"/>
     </div>
     <div class="form-group">
       <label class="label">Subject / Note</label>
@@ -1897,16 +1899,17 @@ const fmtSess = (start, dur) => {
 // ── Student Schedule Modal ────────────────────────────────────────────────────
 const openStudentScheduleModal = (sid=null) => {
   const sortedStu = [...students].sort((a,b)=>a.name.localeCompare(b.name));
-  document.getElementById('stu-sched-student').innerHTML =
-    '<option value="">Select student...</option>' +
-    sortedStu.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  document.getElementById('stu-sched-datalist').innerHTML =
+    sortedStu.map(s=>`<option value="${s.name}"></option>`).join('');
 
   if (sid) {
     // editing existing schedule
     const pkg = schedules.find(p=>p.studentId===sid);
     if (!pkg) return;
+    const stu = students.find(s=>s.id===sid);
     document.getElementById('stu-sched-sid').value = sid;
     document.getElementById('stu-sched-student').value = sid;
+    document.getElementById('stu-sched-student-input').value = stu?.name||'';
     document.getElementById('stu-sched-subject').value = pkg.subject||'';
     document.getElementById('stu-sched-title').textContent = '✏️ Edit Student Schedule';
     document.getElementById('stu-sched-delete-btn').style.display = 'inline-flex';
@@ -1914,6 +1917,7 @@ const openStudentScheduleModal = (sid=null) => {
   } else {
     document.getElementById('stu-sched-sid').value = '';
     document.getElementById('stu-sched-student').value = '';
+    document.getElementById('stu-sched-student-input').value = '';
     document.getElementById('stu-sched-subject').value = '';
     document.getElementById('stu-sched-default-dur').value = '60';
     document.getElementById('stu-sched-title').textContent = '📅 Student Schedule';
@@ -1921,6 +1925,20 @@ const openStudentScheduleModal = (sid=null) => {
     buildDaysSelector([]);
   }
   document.getElementById('stu-sched-overlay').style.display = 'flex';
+};
+
+// Resolve whatever the person typed to a student, ignoring case, so "ali" matches "Ali" or "ALI".
+const findStudentByTypedName = (typed) => {
+  const t = (typed||'').trim().toLowerCase();
+  if (!t) return null;
+  return students.find(s => (s.name||'').trim().toLowerCase() === t);
+};
+
+const onScheduleStudentNameInput = () => {
+  const typed = document.getElementById('stu-sched-student-input').value;
+  const match = findStudentByTypedName(typed);
+  document.getElementById('stu-sched-student').value = match ? match.id : '';
+  onScheduleStudentChange();
 };
 
 const onScheduleStudentChange = () => {
@@ -2058,7 +2076,7 @@ const closeStudentScheduleModal = () => {
 
 const saveStudentSchedule = async () => {
   const sid = document.getElementById('stu-sched-student').value;
-  if (!sid) return notify('Select a student first', false);
+  if (!sid) return notify('Type a valid student name from the list', false);
   const subject = document.getElementById('stu-sched-subject').value.trim();
   const days = [];
   for (const day of DAYS) {
