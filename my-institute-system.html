@@ -76,13 +76,6 @@ button:hover{opacity:.85}
 .teacher-schedule-card{margin-bottom:16px}
 .sched-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
 .sched-day-badge{min-width:90px;font-weight:600;font-size:12px;color:var(--gold)}
-.sched-table{width:100%;border-collapse:collapse;font-size:13px;border:1px solid var(--border)}
-.sched-table th{text-align:left;padding:8px 10px;color:var(--gold);font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:var(--surface);border:1px solid var(--border)}
-.sched-table td{padding:8px 10px;border:1px solid var(--border);color:var(--text)}
-.sched-table tbody tr:nth-child(even){background:rgba(255,255,255,.02)}
-.sched-table tbody tr:hover{background:var(--bg)}
-.sched-table tbody tr{cursor:pointer}
-.sched-table td:first-child,.sched-table th:first-child{font-weight:600}
 
 .modal-base{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;width:440px;max-width:93vw;max-height:90vh;overflow-y:auto}
 .overlay-base{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center}
@@ -137,6 +130,8 @@ button:hover{opacity:.85}
   <button class="nav-btn" id="nav-history" onclick="showPage('history')">🗂️ History</button>
   <button class="nav-btn" id="nav-auditlog" onclick="showPage('auditlog')">📋 Activity Log</button>
   <button class="nav-btn" id="nav-attendance" onclick="showPage('attendance')">✅ Attendance</button>
+  <button class="nav-btn" id="nav-reports" onclick="showPage('reports')">📝 Reports</button>
+  <button class="nav-btn" id="nav-myreports" onclick="showPage('myreports')" style="display:none">📝 My Reports</button>
   <button class="nav-btn" id="nav-mystudents" onclick="showPage('mystudents')" style="display:none">📚 My Students</button>
   <button class="nav-btn" id="nav-myschedule" onclick="showPage('myschedule')" style="display:none">📅 My Schedule</button>
   <button class="nav-btn" id="nav-mysalary" onclick="showPage('mysalary')" style="display:none">💵 My Salary</button>
@@ -266,7 +261,6 @@ button:hover{opacity:.85}
     <div class="flex justify-between items-center mb16 flex-wrap gap8">
       <div class="f18 bold" id="schedule-title">Schedules</div>
       <div class="flex gap8 flex-wrap">
-        <input id="schedule-search" placeholder="🔍 Search student…" oninput="renderSchedule()" style="max-width:200px"/>
         <select id="schedule-view" onchange="renderSchedule()" style="max-width:160px">
           <option value="week">Week View</option>
           <option value="student">By Student</option>
@@ -326,6 +320,28 @@ button:hover{opacity:.85}
     <div id="myschedule-list"></div>
   </div>
 
+  <!-- REPORTS (admin view) -->
+  <div class="page" id="page-reports">
+    <div class="flex justify-between items-center mb16 flex-wrap gap8">
+      <div class="f18 bold">📝 Monthly Reports</div>
+      <button class="btn-ghost" onclick="loadReports(true)">🔄 Refresh</button>
+    </div>
+    <div id="reports-content"></div>
+  </div>
+
+  <!-- TEACHER: MY REPORTS -->
+  <div class="page" id="page-myreports">
+    <div class="f18 bold mb16">📝 Monthly Reports</div>
+    <div id="report-reminder" class="card mb16" style="display:none;border-color:var(--gold);background:#1a1400">
+      <div class="bold gold">📅 Time to submit monthly reports!</div>
+      <div class="f12 muted mt4">It's past the 25th — please submit reports for all your students.</div>
+    </div>
+    <div class="flex gap8 mb16 flex-wrap">
+      <button class="btn-gold" onclick="openNewReport()">➕ New Report</button>
+    </div>
+    <div id="myreports-list"></div>
+  </div>
+
   <!-- TEACHER: MY SALARY -->
   <div class="page" id="page-mysalary">
     <div class="f18 bold mb16">My Salary</div>
@@ -343,9 +359,7 @@ button:hover{opacity:.85}
 
     <div class="form-group">
       <label class="label">Student *</label>
-      <input type="text" id="stu-sched-student-input" list="stu-sched-datalist" placeholder="Type student name..." autocomplete="off" oninput="onScheduleStudentNameInput()"/>
-      <datalist id="stu-sched-datalist"></datalist>
-      <input type="hidden" id="stu-sched-student"/>
+      <select id="stu-sched-student" onchange="onScheduleStudentChange()"></select>
     </div>
     <div class="form-group">
       <label class="label">Subject / Note</label>
@@ -470,9 +484,9 @@ button:hover{opacity:.85}
       <input id="edit-teacher-rate" type="number" min="0" step="0.5" placeholder="5"/>
     </div>
     <div class="form-group">
-      <label class="label">Hours (this month – correct total)</label>
+      <label class="label">Hours (this month – manual override)</label>
       <input id="edit-teacher-hours" type="number" min="0" step="0.5" placeholder="0"/>
-      <div class="f12 muted mt8">ℹ️ Set the correct total hours for this month. Any sessions logged after this will keep adding on top automatically. Leave empty to go back to fully automatic calculation.</div>
+      <div class="f12 muted mt8">ℹ️ Overrides the auto-calculated hours from student logs</div>
     </div>
     <div class="form-group">
       <label class="label">Bonus / Extra Pay ($)</label>
@@ -521,6 +535,63 @@ button:hover{opacity:.85}
 </div>
 
 <div id="toast"></div>
+
+<!-- NEW REPORT MODAL (teacher) -->
+<div id="report-overlay" onclick="closeReportModal()" class="overlay-base">
+  <div onclick="event.stopPropagation()" class="modal-base" style="width:560px">
+    <div class="f15 bold gold mb4">📝 Monthly Report</div>
+    <div class="f12 muted mb16" id="report-month-label"></div>
+    <input type="hidden" id="report-id"/>
+
+    <!-- Student -->
+    <div class="form-group">
+      <label class="label">Student *</label>
+      <select id="report-student" onchange="onReportStudentChange()">
+        <option value="">Select student...</option>
+      </select>
+    </div>
+
+    <!-- Subjects -->
+    <div class="form-group">
+      <label class="label">Subjects *</label>
+      <div class="flex gap12" style="flex-wrap:wrap;padding:8px 0">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px">
+          <input type="checkbox" id="subj-quran" style="width:auto;accent-color:var(--gold)"/> Quran
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px">
+          <input type="checkbox" id="subj-arabic" style="width:auto;accent-color:var(--gold)"/> Arabic
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px">
+          <input type="checkbox" id="subj-islamic" style="width:auto;accent-color:var(--gold)"/> Islamic Studies
+        </label>
+      </div>
+    </div>
+
+    <!-- Progress per subject -->
+    <div id="report-progress-section"></div>
+
+    <!-- Grades -->
+    <div class="f13 bold mb8 mt8" style="color:var(--gold)">📊 Grades (out of 10)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="form-group" style="margin:0"><label class="label">Attendance</label><input id="grade-attendance" type="number" min="0" max="10" step="0.5" placeholder="0-10"/></div>
+      <div class="form-group" style="margin:0"><label class="label">Homework</label><input id="grade-homework" type="number" min="0" max="10" step="0.5" placeholder="0-10"/></div>
+      <div class="form-group" style="margin:0"><label class="label">Interaction</label><input id="grade-interaction" type="number" min="0" max="10" step="0.5" placeholder="0-10"/></div>
+      <div class="form-group" style="margin:0"><label class="label">Behaviour</label><input id="grade-behaviour" type="number" min="0" max="10" step="0.5" placeholder="0-10"/></div>
+      <div class="form-group" style="margin:0"><label class="label">Comprehension</label><input id="grade-comprehension" type="number" min="0" max="10" step="0.5" placeholder="0-10"/></div>
+      <div class="form-group" style="margin:0"><label class="label">Participation</label><input id="grade-participation" type="number" min="0" max="10" step="0.5" placeholder="0-10"/></div>
+    </div>
+    <div class="form-group">
+      <label class="label">Monthly Exam Grade (out of 10)</label>
+      <input id="grade-exam" type="number" min="0" max="10" step="0.5" placeholder="0-10"/>
+    </div>
+
+    <div id="report-error" class="f12 red mb8" style="display:none"></div>
+    <div class="flex gap8 mt12">
+      <button class="btn-gold flex1" onclick="submitReport()">📤 Submit for Review</button>
+      <button class="btn-ghost" onclick="closeReportModal()">Cancel</button>
+    </div>
+  </div>
+</div>
 
 </div><!-- /app-shell -->
 
@@ -695,8 +766,8 @@ const doLogout = () => {
 
 // Apply role-based visibility of nav items and pages
 const applyRoleUI = () => {
-  const adminNav = ['nav-dashboard','nav-teachers','nav-students','nav-salary','nav-schedule','nav-history','nav-auditlog','nav-attendance'];
-  const teacherNav = ['nav-mystudents','nav-myschedule','nav-mysalary'];
+  const adminNav = ['nav-dashboard','nav-teachers','nav-students','nav-salary','nav-schedule','nav-history','nav-auditlog','nav-attendance','nav-reports'];
+  const teacherNav = ['nav-mystudents','nav-myschedule','nav-mysalary','nav-myreports'];
   if (isAdmin()) {
     adminNav.forEach(id=>document.getElementById(id).style.display='');
     teacherNav.forEach(id=>document.getElementById(id).style.display='none');
@@ -741,23 +812,6 @@ const persist = async () => {
     await sbUpsert('teachers', teachers, teacherToDb);
     await sbUpsert('students', students, studentToDb);
   } catch(e) { notify('⚠️ Could not save to database: '+e.message, false); }
-};
-
-// Save ONLY the specific student/teacher row(s) that changed, instead of the entire
-// in-memory list. This matters because if an admin leaves a tab open, their local
-// `students`/`teachers` arrays go stale; if that stale full array is ever pushed to
-// the DB (via persist()), it silently overwrites everyone else's recent changes —
-// e.g. a teacher's attendance deduction gets wiped out by an unrelated admin action.
-// Scoped saves avoid that class of bug entirely.
-const persistStudentRow = async (student) => {
-  if (!student) return;
-  try { await sbUpsert('students', [student], studentToDb); }
-  catch(e) { notify('⚠️ Could not save to database: '+e.message, false); }
-};
-const persistTeacherRow = async (teacher) => {
-  if (!teacher) return;
-  try { await sbUpsert('teachers', [teacher], teacherToDb); }
-  catch(e) { notify('⚠️ Could not save to database: '+e.message, false); }
 };
 
 // ── History / Archive ───────────────────────────────────────────────────────
@@ -850,7 +904,7 @@ const notify = (msg, ok=true) => {
 };
 
 // ── Navigation ────────────────────────────────────────────────────────────────
-const ADMIN_ONLY_PAGES = ['dashboard','teachers','students','salary','schedule','history','auditlog','attendance','addTeacher','addStudent'];
+const ADMIN_ONLY_PAGES = ['dashboard','teachers','students','salary','schedule','history','auditlog','attendance','reports','addTeacher','addStudent'];
 const TEACHER_ONLY_PAGES = ['mystudents','myschedule','mysalary'];
 
 const showPage = id => {
@@ -871,16 +925,13 @@ const rem = s => (s.hoursBought||0)-(s.hoursUsed||0);
 const badgeClass = r => r<=1?'badge-red':r<=3?'badge-amber':'badge-green';
 const teacherRate = t => t.rate||DEFAULT_TEACHER_RATE;
 
-// Raw hours actually logged by this teacher's students (ignores any manual adjustment)
-const teacherAutoHours = tid => students.filter(s=>s.teacherId===tid).reduce((a,s)=>a+(s.hoursUsed||0),0);
-
-// Effective hours for a teacher: auto-calculated hours + a manual adjustment (if any).
-// The adjustment is a fixed offset set once by the admin (e.g. to correct a wrong entry),
-// and new sessions logged afterwards keep adding on top of it automatically.
+// Effective hours for a teacher: manual override wins, else sum from students
 const teacherHours = tid => {
   const t = teachers.find(t=>t.id===tid);
-  const adj = (t && t.hoursOverride !== null && t.hoursOverride !== undefined && t.hoursOverride !== '') ? (parseFloat(t.hoursOverride)||0) : 0;
-  return teacherAutoHours(tid) + adj;
+  if (t && t.hoursOverride !== null && t.hoursOverride !== undefined && t.hoursOverride !== '') {
+    return parseFloat(t.hoursOverride)||0;
+  }
+  return students.filter(s=>s.teacherId===tid).reduce((a,s)=>a+(s.hoursUsed||0),0);
 };
 const teacherStudents = tid => students.filter(s=>s.teacherId===tid);
 const getUsdRate = () => parseFloat(document.getElementById('usd-rate')?.value)||0;
@@ -981,9 +1032,8 @@ const addTeacher = () => {
   const name=document.getElementById('new-teacher-name').value.trim();
   const email=document.getElementById('new-teacher-email').value.trim();
   if (!name) return notify('Enter teacher name',false);
-  const newTeacher = {id:uid(),name,email,joinedAt:new Date().toLocaleDateString('en-GB'),rate:DEFAULT_TEACHER_RATE,hoursOverride:null,bonus:0,bonusNote:''};
-  teachers.push(newTeacher);
-  persistTeacherRow(newTeacher); notify(name+' added ✓');
+  teachers.push({id:uid(),name,email,joinedAt:new Date().toLocaleDateString('en-GB'),rate:DEFAULT_TEACHER_RATE,hoursOverride:null,bonus:0,bonusNote:''});
+  persist(); notify(name+' added ✓');
   logAction('Added teacher', name);
   document.getElementById('new-teacher-name').value='';
   document.getElementById('new-teacher-email').value='';
@@ -1009,9 +1059,8 @@ const addStudent = () => {
   const isTrial=document.getElementById('new-student-type-trial').checked;
   if (!name||!tid) return notify('Fill all required fields',false);
   const code=genCode(name);
-  const newStudent = {id:uid(),name,email,teacherId:tid,code,hoursBought:isTrial?1:hours,hoursUsed:0,joinedAt:new Date().toLocaleDateString('en-GB'),isTrial,rate,currency};
-  students.push(newStudent);
-  persistStudentRow(newStudent); notify(name+' added · Code: '+code+(isTrial?' 🎯 Trial':''));
+  students.push({id:uid(),name,email,teacherId:tid,code,hoursBought:isTrial?1:hours,hoursUsed:0,joinedAt:new Date().toLocaleDateString('en-GB'),isTrial,rate,currency});
+  persist(); notify(name+' added · Code: '+code+(isTrial?' 🎯 Trial':''));
   logAction('Added student', name+(isTrial?' [Trial]':''));
   ['new-student-name','new-student-email','new-student-hours'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('new-student-teacher').value='';
@@ -1031,9 +1080,8 @@ const deleteStudent = sid => {
 const logHours = (sid,delta) => {
   const h=parseFloat(document.getElementById('hrs-'+sid)?.value)||1;
   const s = students.find(s=>s.id===sid);
-  let updatedStudent;
-  students=students.map(s=> s.id!==sid?s:(updatedStudent={...s,hoursUsed:Math.max(0,(s.hoursUsed||0)+h*delta)}));
-  persistStudentRow(updatedStudent); renderAll();
+  students=students.map(s=> s.id!==sid?s:{...s,hoursUsed:Math.max(0,(s.hoursUsed||0)+h*delta)});
+  persist(); renderAll();
   logAction(delta>0?'Logged hours':'Removed hours', `${s?.name||sid}: ${delta>0?'+':'-'}${h}h`);
 };
 
@@ -1041,9 +1089,8 @@ const topUpHours = sid => {
   const h=parseFloat(document.getElementById('buy-'+sid)?.value);
   if(!h||h<=0) return notify('Invalid hours',false);
   const s = students.find(s=>s.id===sid);
-  let updatedStudent;
-  students=students.map(s=> s.id===sid?(updatedStudent={...s,hoursBought:(s.hoursBought||0)+h}):s);
-  persistStudentRow(updatedStudent); notify(h+'h added ✓'); renderAll();
+  students=students.map(s=> s.id===sid?{...s,hoursBought:(s.hoursBought||0)+h}:s);
+  persist(); notify(h+'h added ✓'); renderAll();
   logAction('Topped up hours', `${s?.name||sid}: +${h}h`);
 };
 
@@ -1053,9 +1100,8 @@ const applyPromo = () => {
   if(!code||!newName) return notify('Fill all fields',false);
   const referrer=students.find(s=>s.code===code);
   if(!referrer) return notify('Code not found!',false);
-  let updatedReferrer;
-  students=students.map(s=> s.id===referrer.id?(updatedReferrer={...s,hoursBought:(s.hoursBought||0)+1}):s);
-  persistStudentRow(updatedReferrer); notify(referrer.name+' earned +1 hour 🎉'); closeModal(); renderAll();
+  students=students.map(s=> s.id===referrer.id?{...s,hoursBought:(s.hoursBought||0)+1}:s);
+  persist(); notify(referrer.name+' earned +1 hour 🎉'); closeModal(); renderAll();
   logAction('Applied promo code', `${code} → ${referrer.name} (+1h), referred by ${newName}`);
 };
 
@@ -1087,7 +1133,7 @@ const openEditTeacher=tid=>{ const t=teachers.find(t=>t.id===tid); if(!t) return
   document.getElementById('edit-teacher-email').value=t.email||'';
   document.getElementById('edit-teacher-joined').value=t.joinedAt||'';
   document.getElementById('edit-teacher-rate').value=t.rate||DEFAULT_TEACHER_RATE;
-  document.getElementById('edit-teacher-hours').value=t.hoursOverride!==null&&t.hoursOverride!==undefined&&t.hoursOverride!==''?teacherHours(t.id):'';
+  document.getElementById('edit-teacher-hours').value=t.hoursOverride!==null&&t.hoursOverride!==undefined?t.hoursOverride:'';
   document.getElementById('edit-teacher-bonus').value=t.bonus||0;
   document.getElementById('edit-teacher-bonus-note').value=t.bonusNote||'';
   document.getElementById('edit-teacher-overlay').style.display='flex';
@@ -1098,20 +1144,16 @@ const saveEditTeacher=()=>{
   const name=document.getElementById('edit-teacher-name').value.trim();
   if(!name) return notify('Name is required',false);
   const hoursVal=document.getElementById('edit-teacher-hours').value.trim();
-  // The admin types the correct TOTAL hours for this month; we store it as an offset
-  // from the auto-calculated hours, so future logged sessions keep adding on top.
-  const hoursOverride = hoursVal===''? null : (parseFloat(hoursVal)||0) - teacherAutoHours(tid);
-  let updatedTeacher;
-  teachers=teachers.map(t=>t.id!==tid?t:(updatedTeacher={...t,
+  teachers=teachers.map(t=>t.id!==tid?t:{...t,
     name,
     email:document.getElementById('edit-teacher-email').value.trim(),
     joinedAt:document.getElementById('edit-teacher-joined').value.trim()||t.joinedAt,
     rate:parseFloat(document.getElementById('edit-teacher-rate').value)||DEFAULT_TEACHER_RATE,
-    hoursOverride,
+    hoursOverride:hoursVal===''?null:parseFloat(hoursVal),
     bonus:parseFloat(document.getElementById('edit-teacher-bonus').value)||0,
     bonusNote:document.getElementById('edit-teacher-bonus-note').value.trim(),
-  }));
-  persistTeacherRow(updatedTeacher); notify(name+' updated ✓'); closeEditTeacher(); renderAll();
+  });
+  persist(); notify(name+' updated ✓'); closeEditTeacher(); renderAll();
   logAction('Edited teacher', name);
 };
 
@@ -1135,8 +1177,7 @@ const saveEditStudent=()=>{
   const sid=document.getElementById('edit-student-id').value;
   const name=document.getElementById('edit-student-name').value.trim();
   if(!name) return notify('Name is required',false);
-  let updatedStudent;
-  students=students.map(s=>s.id!==sid?s:(updatedStudent={...s,
+  students=students.map(s=>s.id!==sid?s:{...s,
     name,
     email:document.getElementById('edit-student-email').value.trim(),
     teacherId:document.getElementById('edit-student-teacher').value,
@@ -1146,8 +1187,8 @@ const saveEditStudent=()=>{
     currency:document.getElementById('edit-student-currency').value||'GBP',
     code:document.getElementById('edit-student-code').value.trim().toUpperCase()||s.code,
     joinedAt:document.getElementById('edit-student-joined').value.trim()||s.joinedAt,
-  }));
-  persistStudentRow(updatedStudent); notify(name+' updated ✓'); closeEditStudent(); renderAll();
+  });
+  persist(); notify(name+' updated ✓'); closeEditStudent(); renderAll();
   logAction('Edited student', name);
 };
 
@@ -1539,9 +1580,8 @@ const submitAttendance = async () => {
   } catch(e) { /* non-fatal */ }
 
   // Log hours
-  let updatedStudent;
-  students = students.map(s => s.id === sid ? (updatedStudent = {...s, hoursUsed: (s.hoursUsed||0) + hours}) : s);
-  persistStudentRow(updatedStudent);
+  students = students.map(s => s.id === sid ? {...s, hoursUsed: (s.hoursUsed||0) + hours} : s);
+  persist();
 
   // Save to DB
   try {
@@ -1661,7 +1701,7 @@ const loadAttendance = async (forceRefresh=false) => {
   if (historyRows.length > 0) {
     html += `<details style="margin-top:12px">
       <summary class="f13 muted" style="cursor:pointer;padding:8px 0">🗂️ Previous Days (${historyRows.length} records)</summary>
-      <div class="card mt8">${historyRows.slice(0,100).map(r => renderRow(r, true)).join('')}</div>
+      <div class="card mt8">${historyRows.slice(0,100).map(r => renderRow(r, false)).join('')}</div>
     </details>`;
   }
 
@@ -1685,9 +1725,8 @@ const deleteAttendance = async (aid, sid, hours) => {
   if (!confirm('Cancel this attendance and reverse the hours?')) return;
   try {
     await sbFetch(`attendance_log?id=eq.${aid}`, { method: 'DELETE' });
-    let updatedStudent;
-    students = students.map(s => s.id === sid ? (updatedStudent = {...s, hoursUsed: Math.max(0,(s.hoursUsed||0)-hours)}) : s);
-    persistStudentRow(updatedStudent);
+    students = students.map(s => s.id === sid ? {...s, hoursUsed: Math.max(0,(s.hoursUsed||0)-hours)} : s);
+    persist();
     attendanceCache = null;
     notify('↩️ Attendance cancelled and hours reversed', true);
     renderAll();
@@ -1841,9 +1880,9 @@ const renderMySalary = () => {
 
 const renderAll=()=>{
   if (isAdmin()) {
-    renderDashboard(); renderTeachers(); renderStudents(); renderSalary(); renderSchedule(); renderHistory(); renderAuditLog(); loadAttendance();
+    renderDashboard(); renderTeachers(); renderStudents(); renderSalary(); renderSchedule(); renderHistory(); renderAuditLog(); loadAttendance(); loadReports();
   } else if (isTeacherRole()) {
-    renderMyStudents(); renderMySchedule(); renderMySalary(); renderTrialAlert();
+    renderMyStudents(); renderMySchedule(); renderMySalary(); renderMyReports(); checkReportReminder();
   }
 };
 
@@ -1857,13 +1896,6 @@ const persistSchedules = async () => {
 };
 
 const DAYS = ['Saturday','Sunday','Monday','Tuesday','Wednesday','Thursday','Friday'];
-// Search box on the Schedules page should match either a student's name or their teacher's name.
-const matchesSchedSearch = (stu, search) => {
-  if (!search) return true;
-  if ((stu.name||'').toLowerCase().includes(search)) return true;
-  const teacher = teachers.find(t=>t.id===stu.teacherId);
-  return !!(teacher && teacher.name.toLowerCase().includes(search));
-};
 const CHIP_COLORS = [
   {bg:'#0d2240',border:'#1e4a80',text:'#58a6ff'},
   {bg:'#0f2d1a',border:'#2a6b40',text:'#5dba7e'},
@@ -1899,17 +1931,16 @@ const fmtSess = (start, dur) => {
 // ── Student Schedule Modal ────────────────────────────────────────────────────
 const openStudentScheduleModal = (sid=null) => {
   const sortedStu = [...students].sort((a,b)=>a.name.localeCompare(b.name));
-  document.getElementById('stu-sched-datalist').innerHTML =
-    sortedStu.map(s=>`<option value="${s.name}"></option>`).join('');
+  document.getElementById('stu-sched-student').innerHTML =
+    '<option value="">Select student...</option>' +
+    sortedStu.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
 
   if (sid) {
     // editing existing schedule
     const pkg = schedules.find(p=>p.studentId===sid);
     if (!pkg) return;
-    const stu = students.find(s=>s.id===sid);
     document.getElementById('stu-sched-sid').value = sid;
     document.getElementById('stu-sched-student').value = sid;
-    document.getElementById('stu-sched-student-input').value = stu?.name||'';
     document.getElementById('stu-sched-subject').value = pkg.subject||'';
     document.getElementById('stu-sched-title').textContent = '✏️ Edit Student Schedule';
     document.getElementById('stu-sched-delete-btn').style.display = 'inline-flex';
@@ -1917,7 +1948,6 @@ const openStudentScheduleModal = (sid=null) => {
   } else {
     document.getElementById('stu-sched-sid').value = '';
     document.getElementById('stu-sched-student').value = '';
-    document.getElementById('stu-sched-student-input').value = '';
     document.getElementById('stu-sched-subject').value = '';
     document.getElementById('stu-sched-default-dur').value = '60';
     document.getElementById('stu-sched-title').textContent = '📅 Student Schedule';
@@ -1925,20 +1955,6 @@ const openStudentScheduleModal = (sid=null) => {
     buildDaysSelector([]);
   }
   document.getElementById('stu-sched-overlay').style.display = 'flex';
-};
-
-// Resolve whatever the person typed to a student, ignoring case, so "ali" matches "Ali" or "ALI".
-const findStudentByTypedName = (typed) => {
-  const t = (typed||'').trim().toLowerCase();
-  if (!t) return null;
-  return students.find(s => (s.name||'').trim().toLowerCase() === t);
-};
-
-const onScheduleStudentNameInput = () => {
-  const typed = document.getElementById('stu-sched-student-input').value;
-  const match = findStudentByTypedName(typed);
-  document.getElementById('stu-sched-student').value = match ? match.id : '';
-  onScheduleStudentChange();
 };
 
 const onScheduleStudentChange = () => {
@@ -2076,7 +2092,7 @@ const closeStudentScheduleModal = () => {
 
 const saveStudentSchedule = async () => {
   const sid = document.getElementById('stu-sched-student').value;
-  if (!sid) return notify('Type a valid student name from the list', false);
+  if (!sid) return notify('Select a student first', false);
   const subject = document.getElementById('stu-sched-subject').value.trim();
   const days = [];
   for (const day of DAYS) {
@@ -2192,11 +2208,9 @@ const renderSchedule = () => {
   document.getElementById('schedule-week-view').style.display   = view==='week'    ? '' : 'none';
   document.getElementById('schedule-student-view').style.display = view==='student' ? '' : 'none';
   document.getElementById('schedule-teacher-view').style.display = view==='teacher' ? '' : 'none';
-  const searchEl = document.getElementById('schedule-search');
-  const search = (searchEl?.value||'').trim().toLowerCase();
-  if (view==='week')    renderWeekGrid(search);
-  if (view==='student') renderStudentScheduleView(search);
-  if (view==='teacher') renderTeacherScheduleView(search);
+  if (view==='week')    renderWeekGrid();
+  if (view==='student') renderStudentScheduleView();
+  if (view==='teacher') renderTeacherScheduleView();
   renderConflictBanner();
 };
 
@@ -2231,53 +2245,7 @@ const renderConflictBanner = () => {
   }
 };
 
-const renderWeekGrid = (search='') => {
-  if (search) {
-    // Search mode: one flat table sorted by day/time, not the day-column chip layout.
-    const rows = [];
-    DAYS.forEach(day => {
-      const daySessions = [];
-      schedules.forEach(pkg => {
-        const d = pkg.days.find(d=>d.day===day);
-        if (!d) return;
-        const stu = students.find(s=>s.id===pkg.studentId);
-        if (!(stu && matchesSchedSearch(stu, search))) return;
-        const teacher = stu ? teachers.find(t=>t.id===stu.teacherId) : null;
-        daySessions.push({pkg, d, stu, teacher});
-      });
-      daySessions.sort((a,b)=>a.d.start.localeCompare(b.d.start));
-
-      const conflictSids = new Set();
-      daySessions.forEach(({d:dA, pkg:pA},i)=>{
-        daySessions.forEach(({d:dB, pkg:pB},j)=>{
-          if(i>=j) return;
-          const stuA=students.find(s=>s.id===pA.studentId), stuB=students.find(s=>s.id===pB.studentId);
-          if(!stuA||!stuB||stuA.teacherId!==stuB.teacherId) return;
-          const as=timeToMins(dA.start),ae=as+(dA.dur||60),bs=timeToMins(dB.start),be=bs+(dB.dur||60);
-          if(as<be&&ae>bs){conflictSids.add(pA.studentId);conflictSids.add(pB.studentId);}
-        });
-      });
-
-      daySessions.forEach(({pkg,d,stu,teacher})=>{
-        const isConflict = conflictSids.has(pkg.studentId);
-        const c = studentColor(pkg.studentId);
-        rows.push(`<tr onclick="openEditSess('${pkg.studentId}','${day}')" style="${isConflict?'background:var(--red-bg)':''}">
-          <td style="color:${isConflict?'var(--red)':''}">${day}${isConflict?' ⚠️':''}</td>
-          <td style="font-family:'JetBrains Mono',monospace">${fmt12(d.start)}</td>
-          <td>${durLabel(d.dur||60)}</td>
-          <td style="color:${c.text}">${stu?.name||'—'}</td>
-          <td>${teacher?teacher.name:'—'}</td>
-          <td>${pkg.subject||'—'}</td>
-        </tr>`);
-      });
-    });
-
-    document.getElementById('week-grid').innerHTML = rows.length
-      ? `<div class="card"><table class="sched-table"><thead><tr><th>Day</th><th>Time</th><th>Duration</th><th>Student</th><th>Teacher</th><th>Subject</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`
-      : '<div class="card muted" style="text-align:center;padding:40px">No matches for your search.</div>';
-    return;
-  }
-
+const renderWeekGrid = () => {
   const cols = DAYS.map(day => {
     // collect all sessions for this day across all packages
     const daySessions = [];
@@ -2327,45 +2295,14 @@ const renderWeekGrid = (search='') => {
     `<div class="schedule-overflow"><div class="week-grid">${cols}</div></div>`;
 };
 
-const renderStudentScheduleView = (search='') => {
-  const sortedStu = [...students].sort((a,b)=>a.name.localeCompare(b.name))
-    .filter(s=>matchesSchedSearch(s, search));
+const renderStudentScheduleView = () => {
+  const sortedStu = [...students].sort((a,b)=>a.name.localeCompare(b.name));
   const withSched = sortedStu.filter(s=>schedules.find(p=>p.studentId===s.id));
   const noSched   = sortedStu.filter(s=>!schedules.find(p=>p.studentId===s.id));
 
   let html = '';
   if (!students.length) {
     html = '<div class="card muted" style="text-align:center;padding:40px">No students yet.</div>';
-  } else if (!sortedStu.length) {
-    html = '<div class="card muted" style="text-align:center;padding:40px">No students match your search.</div>';
-  } else if (search) {
-    // Search mode: one flat table across all matched students, not a card per student.
-    const rows = [];
-    withSched.forEach(stu => {
-      const pkg = schedules.find(p=>p.studentId===stu.id);
-      const teacher = teachers.find(t=>t.id===stu.teacherId);
-      const c = studentColor(stu.id);
-      DAYS.filter(d=>pkg.days.find(pd=>pd.day===d)).forEach(day=>{
-        const d = pkg.days.find(pd=>pd.day===day);
-        rows.push(`<tr onclick="openEditSess('${stu.id}','${day}')">
-          <td style="color:${c.text}">${stu.name}</td>
-          <td>${teacher?teacher.name:'—'}</td>
-          <td>${day}</td>
-          <td style="font-family:'JetBrains Mono',monospace">${fmt12(d.start)}</td>
-          <td>${durLabel(d.dur||60)}</td>
-          <td>${pkg.subject||'—'}</td>
-        </tr>`);
-      });
-    });
-    html = rows.length
-      ? `<div class="card"><table class="sched-table"><thead><tr><th>Student</th><th>Teacher</th><th>Day</th><th>Time</th><th>Duration</th><th>Subject</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`
-      : '<div class="card muted" style="text-align:center;padding:40px">No schedule found for this search.</div>';
-    if (noSched.length) {
-      html += `<div class="card mt8" style="border-left:3px solid var(--border)">
-        <div class="f13 muted bold mb8">No schedule set</div>
-        ${noSched.map(s=>`<span class="student-pill" style="cursor:pointer" onclick="openStudentScheduleModal()">+ ${s.name}</span>`).join('')}
-      </div>`;
-    }
   } else {
     withSched.forEach(stu => {
       const pkg = schedules.find(p=>p.studentId===stu.id);
@@ -2403,50 +2340,19 @@ const renderStudentScheduleView = (search='') => {
   document.getElementById('student-schedule-list').innerHTML = html;
 };
 
-const renderTeacherScheduleView = (search='') => {
+const renderTeacherScheduleView = () => {
   if (!teachers.length) {
     document.getElementById('teacher-schedule-list').innerHTML = '<div class="card muted" style="text-align:center;padding:40px">No teachers yet.</div>';
     return;
   }
   const sorted = [...teachers].sort((a,b)=>a.name.localeCompare(b.name));
-
-  if (search) {
-    // Search mode: one flat table across all matched teachers/students, not a card per teacher.
-    const rows = [];
-    sorted.forEach(t => {
-      const teacherNameMatches = t.name.toLowerCase().includes(search);
-      const tStudents = students.filter(s=>s.teacherId===t.id && (teacherNameMatches || s.name.toLowerCase().includes(search)));
-      const tSchedules = tStudents.map(s=>({stu:s, pkg:schedules.find(p=>p.studentId===s.id)})).filter(x=>x.pkg);
-      DAYS.forEach(day=>{
-        tSchedules.forEach(({stu,pkg})=>{
-          const d = pkg.days.find(pd=>pd.day===day);
-          if (!d) return;
-          const sc = studentColor(stu.id);
-          const otherSess = tSchedules.filter(x=>x.stu.id!==stu.id).map(x=>x.pkg.days.find(pd=>pd.day===day)).filter(Boolean);
-          const ds=timeToMins(d.start),de=ds+(d.dur||60);
-          const isConflict = otherSess.some(od=>{ const os=timeToMins(od.start),oe=os+(od.dur||60); return ds<oe&&de>os; });
-          rows.push(`<tr onclick="openEditSess('${stu.id}','${day}')" style="${isConflict?'background:var(--red-bg)':''}">
-            <td>${t.name}</td>
-            <td style="color:${sc.text}">${stu.name}</td>
-            <td style="color:${isConflict?'var(--red)':''}">${day}${isConflict?' ⚠️':''}</td>
-            <td style="font-family:'JetBrains Mono',monospace">${fmt12(d.start)}</td>
-            <td>${durLabel(d.dur||60)}</td>
-            <td>${pkg.subject||'—'}</td>
-          </tr>`);
-        });
-      });
-    });
-    document.getElementById('teacher-schedule-list').innerHTML = rows.length
-      ? `<div class="card"><table class="sched-table"><thead><tr><th>Teacher</th><th>Student</th><th>Day</th><th>Time</th><th>Duration</th><th>Subject</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`
-      : '<div class="card muted" style="text-align:center;padding:40px">No students match your search.</div>';
-    return;
-  }
-
   document.getElementById('teacher-schedule-list').innerHTML = sorted.map(t => {
     const c = teacherColorByIdx(t.id);
+    // get all students of this teacher who have schedules
     const tStudents = students.filter(s=>s.teacherId===t.id);
     const tSchedules = tStudents.map(s=>({stu:s, pkg:schedules.find(p=>p.studentId===s.id)})).filter(x=>x.pkg);
 
+    // build day-grouped view
     const byDay = DAYS.map(day=>{
       const daySess = tSchedules.filter(({pkg})=>pkg.days.find(d=>d.day===day));
       if (!daySess.length) return '';
@@ -2476,6 +2382,281 @@ const renderTeacherScheduleView = (search='') => {
       ${byDay||'<div class="muted f13">No student sessions scheduled.</div>'}
     </div>`;
   }).join('');
+};
+
+// ── Monthly Reports ────────────────────────────────────────────────────────────
+let reportsCache = null;
+const GRADE_KEYS = ['attendance','homework','interaction','behaviour','comprehension','participation'];
+const SUBJECTS = [{id:'quran',label:'Quran'},{id:'arabic',label:'Arabic'},{id:'islamic',label:'Islamic Studies'}];
+
+const currentMonthLabel = () => new Date().toLocaleString('en-GB',{month:'long',year:'numeric'});
+
+const checkReportReminder = () => {
+  const el = document.getElementById('report-reminder');
+  if (!el) return;
+  el.style.display = new Date().getDate() >= 25 ? '' : 'none';
+};
+
+// ── Teacher: open new report modal ────────────────────────────────────────────
+const openNewReport = (reportId=null) => {
+  document.getElementById('report-id').value = reportId||'';
+  document.getElementById('report-month-label').textContent = currentMonthLabel();
+  document.getElementById('report-error').style.display = 'none';
+
+  // Populate student select (teacher's students only)
+  const myStudents = students.filter(s=>s.teacherId===currentUser.teacherId).sort((a,b)=>a.name.localeCompare(b.name));
+  document.getElementById('report-student').innerHTML =
+    '<option value="">Select student...</option>' +
+    myStudents.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+
+  // Reset subjects and grades
+  SUBJECTS.forEach(s=>document.getElementById('subj-'+s.id).checked=false);
+  GRADE_KEYS.forEach(k=>document.getElementById('grade-'+k).value='');
+  document.getElementById('grade-exam').value='';
+  document.getElementById('report-progress-section').innerHTML='';
+
+  document.getElementById('report-overlay').classList.add('open');
+};
+
+const closeReportModal = () => document.getElementById('report-overlay').classList.remove('open');
+
+const onReportStudentChange = () => {
+  // Could prefill data based on student in future
+};
+
+const onSubjectChange = () => {
+  const section = document.getElementById('report-progress-section');
+  const selected = SUBJECTS.filter(s=>document.getElementById('subj-'+s.id).checked);
+  if (!selected.length) { section.innerHTML=''; return; }
+
+  section.innerHTML = `<div class="f13 bold mb8" style="color:var(--gold)">📈 Progress This Month</div>` +
+    selected.map(s=>{
+      if (s.id==='quran') return `
+        <div class="card mb8" style="padding:12px">
+          <div class="bold f13 mb8">📖 Quran</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="form-group" style="margin:0"><label class="label">From Surah</label><input id="q-from-surah" placeholder="e.g. Al-Baqarah"/></div>
+            <div class="form-group" style="margin:0"><label class="label">From Verse</label><input id="q-from-verse" placeholder="e.g. 1"/></div>
+            <div class="form-group" style="margin:0"><label class="label">To Surah</label><input id="q-to-surah" placeholder="e.g. Al-Baqarah"/></div>
+            <div class="form-group" style="margin:0"><label class="label">To Verse</label><input id="q-to-verse" placeholder="e.g. 20"/></div>
+          </div>
+          <div class="form-group mt8" style="margin-bottom:0"><label class="label">Tajweed covered</label><input id="q-tajweed" placeholder="e.g. Ghunnah, Idgham..."/></div>
+        </div>`;
+      if (s.id==='arabic') return `
+        <div class="card mb8" style="padding:12px">
+          <div class="bold f13 mb8">🌍 Arabic</div>
+          <div class="form-group" style="margin:0"><label class="label">From</label><input id="ar-from" placeholder="e.g. Chapter 3, Lesson 1"/></div>
+          <div class="form-group mt8" style="margin-bottom:0"><label class="label">To</label><input id="ar-to" placeholder="e.g. Chapter 3, Lesson 4"/></div>
+        </div>`;
+      if (s.id==='islamic') return `
+        <div class="card mb8" style="padding:12px">
+          <div class="bold f13 mb8">☪️ Islamic Studies</div>
+          <div class="form-group" style="margin:0"><label class="label">From</label><input id="is-from" placeholder="e.g. Pillars of Islam - Prayer"/></div>
+          <div class="form-group mt8" style="margin-bottom:0"><label class="label">To</label><input id="is-to" placeholder="e.g. Pillars of Islam - Zakat"/></div>
+        </div>`;
+      return '';
+    }).join('');
+};
+
+// Wire subject checkboxes
+document.addEventListener('change', e => {
+  if (['subj-quran','subj-arabic','subj-islamic'].includes(e.target.id)) onSubjectChange();
+});
+
+const submitReport = async () => {
+  const sid = document.getElementById('report-student').value;
+  const errEl = document.getElementById('report-error');
+  errEl.style.display = 'none';
+
+  if (!sid) { errEl.textContent='Select a student'; errEl.style.display='block'; return; }
+  const selectedSubjects = SUBJECTS.filter(s=>document.getElementById('subj-'+s.id).checked).map(s=>s.id);
+  if (!selectedSubjects.length) { errEl.textContent='Select at least one subject'; errEl.style.display='block'; return; }
+
+  const stu = students.find(s=>s.id===sid);
+  const grades = {};
+  GRADE_KEYS.forEach(k=>grades[k]=parseFloat(document.getElementById('grade-'+k).value)||0);
+  grades.exam = parseFloat(document.getElementById('grade-exam').value)||0;
+
+  const progress = {};
+  if (selectedSubjects.includes('quran')) {
+    progress.quran = {
+      fromSurah: document.getElementById('q-from-surah')?.value||'',
+      fromVerse: document.getElementById('q-from-verse')?.value||'',
+      toSurah: document.getElementById('q-to-surah')?.value||'',
+      toVerse: document.getElementById('q-to-verse')?.value||'',
+      tajweed: document.getElementById('q-tajweed')?.value||''
+    };
+  }
+  if (selectedSubjects.includes('arabic')) {
+    progress.arabic = { from: document.getElementById('ar-from')?.value||'', to: document.getElementById('ar-to')?.value||'' };
+  }
+  if (selectedSubjects.includes('islamic')) {
+    progress.islamic = { from: document.getElementById('is-from')?.value||'', to: document.getElementById('is-to')?.value||'' };
+  }
+
+  const report = {
+    id: uid(),
+    student_id: sid,
+    student_name: stu.name,
+    teacher_id: currentUser.teacherId||null,
+    teacher_name: currentUser.displayName,
+    month_key: currentMonthKey(),
+    month_label: currentMonthLabel(),
+    subjects: selectedSubjects,
+    progress,
+    grades,
+    exam_grade: grades.exam,
+    status: 'pending',
+    admin_note: '',
+    created_at: new Date().toISOString(),
+    reviewed_at: ''
+  };
+
+  try {
+    await sbFetch('monthly_reports', { method:'POST', body: JSON.stringify([report]) });
+    reportsCache = null;
+    closeReportModal();
+    notify('✅ Report submitted for review');
+    renderAll();
+    logAction('Submitted monthly report', `${stu.name} — ${currentMonthLabel()}`);
+  } catch(e) {
+    errEl.textContent = '⚠️ Could not save: '+e.message;
+    errEl.style.display = 'block';
+  }
+};
+
+// ── Teacher: My Reports list ──────────────────────────────────────────────────
+const renderMyReports = async () => {
+  const el = document.getElementById('myreports-list');
+  if (!el || !currentUser) return;
+  checkReportReminder();
+  try {
+    const rows = await sbFetch(`monthly_reports?teacher_id=eq.${currentUser.teacherId}&order=created_at.desc&select=*`);
+    if (!rows||!rows.length) { el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">No reports submitted yet.</div>'; return; }
+    el.innerHTML = rows.map(r=>{
+      const statusBadge = r.status==='approved'
+        ? '<span class="badge badge-green">✅ Approved</span>'
+        : r.status==='rejected'
+        ? '<span class="badge badge-red">❌ Needs revision</span>'
+        : '<span class="badge badge-amber">⏳ Pending review</span>';
+      return `<div class="card mb12">
+        <div class="flex justify-between items-center flex-wrap gap8">
+          <div>
+            <span class="bold f14">${r.student_name}</span>
+            <span class="muted f12" style="margin-left:8px">${r.month_label}</span>
+          </div>
+          ${statusBadge}
+        </div>
+        ${r.admin_note ? `<div class="f12 muted mt8">💬 Admin: ${r.admin_note}</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch(e) { el.innerHTML=`<div class="card muted" style="text-align:center;padding:40px">⚠️ ${e.message}</div>`; }
+};
+
+// ── Admin: Reports review ─────────────────────────────────────────────────────
+const loadReports = async (forceRefresh=false) => {
+  const el = document.getElementById('reports-content');
+  if (!el) return;
+  if (!reportsCache || forceRefresh) {
+    el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">Loading…</div>';
+    try {
+      const rows = await sbFetch('monthly_reports?order=created_at.desc&select=*');
+      reportsCache = rows||[];
+    } catch(e) { el.innerHTML=`<div class="card" style="text-align:center;padding:40px;color:var(--red)">⚠️ ${e.message}</div>`; return; }
+  }
+
+  if (!reportsCache.length) { el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">No reports yet.</div>'; return; }
+
+  const pending = reportsCache.filter(r=>r.status==='pending');
+  const done = reportsCache.filter(r=>r.status!=='pending');
+
+  const renderReport = r => {
+    const avg = (Object.values(r.grades||{}).reduce((a,v)=>a+(parseFloat(v)||0),0) / (GRADE_KEYS.length||1)).toFixed(1);
+    const p = r.progress||{};
+
+    // Build WhatsApp message
+    const waLines = [
+      `📊 Monthly Report — ${r.month_label}`,
+      `👤 Student: ${r.student_name}`,
+      `👨‍🏫 Teacher: ${r.teacher_name}`,
+      '',
+      '📈 Progress:',
+      p.quran ? `📖 Quran: ${p.quran.fromSurah} ${p.quran.fromVerse} → ${p.quran.toSurah} ${p.quran.toVerse}${p.quran.tajweed?'\n   Tajweed: '+p.quran.tajweed:''}` : '',
+      p.arabic ? `🌍 Arabic: ${p.arabic.from} → ${p.arabic.to}` : '',
+      p.islamic ? `☪️ Islamic Studies: ${p.islamic.from} → ${p.islamic.to}` : '',
+      '',
+      '📊 Grades:',
+      ...GRADE_KEYS.map(k=>`  • ${k.charAt(0).toUpperCase()+k.slice(1)}: ${r.grades?.[k]||0}/10`),
+      `  • Monthly Exam: ${r.grades?.exam||0}/10`,
+      `  • Average: ${avg}/10`,
+    ].filter(l=>l!==undefined).join('\n');
+
+    const msgId = 'rep_'+r.id;
+    return `<div class="card mb12">
+      <div class="flex justify-between items-center flex-wrap gap8 mb12">
+        <div>
+          <span class="bold f15">${r.student_name}</span>
+          <span class="muted f12" style="margin-left:8px">${r.month_label}</span>
+          <span class="badge badge-blue f12" style="margin-left:8px">${r.teacher_name}</span>
+          ${r.status==='approved'?'<span class="badge badge-green" style="margin-left:4px">✅ Approved</span>':r.status==='rejected'?'<span class="badge badge-red" style="margin-left:4px">❌ Rejected</span>':'<span class="badge badge-amber" style="margin-left:4px">⏳ Pending</span>'}
+        </div>
+        <div class="flex gap8 flex-wrap">
+          <span class="badge badge-amber">Avg: ${avg}/10</span>
+          <textarea id="${msgId}_text" style="display:none">${waLines}</textarea>
+          <button onclick="copyAttendanceMsg('${msgId}')" style="padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--gold);border-radius:6px;cursor:pointer;color:var(--gold)">📋 Copy WhatsApp</button>
+        </div>
+      </div>
+
+      ${Object.keys(p).length ? `<div style="border-top:1px solid var(--border);padding-top:10px;margin-bottom:10px">
+        <div class="f12 muted mb6">📈 Progress</div>
+        ${p.quran?`<div class="f13">📖 Quran: ${p.quran.fromSurah} ${p.quran.fromVerse} → ${p.quran.toSurah} ${p.quran.toVerse}${p.quran.tajweed?` | Tajweed: ${p.quran.tajweed}`:''}</div>`:''}
+        ${p.arabic?`<div class="f13">🌍 Arabic: ${p.arabic.from} → ${p.arabic.to}</div>`:''}
+        ${p.islamic?`<div class="f13">☪️ Islamic Studies: ${p.islamic.from} → ${p.islamic.to}</div>`:''}
+      </div>` : ''}
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px">
+        ${GRADE_KEYS.map(k=>`<div class="card" style="padding:8px;text-align:center">
+          <div class="f12 muted">${k.charAt(0).toUpperCase()+k.slice(1)}</div>
+          <div class="bold f16 ${(r.grades?.[k]||0)>=7?'gold':(r.grades?.[k]||0)>=5?'':'red'}">${r.grades?.[k]||0}/10</div>
+        </div>`).join('')}
+        <div class="card" style="padding:8px;text-align:center">
+          <div class="f12 muted">Exam</div>
+          <div class="bold f16 ${(r.grades?.exam||0)>=7?'gold':(r.grades?.exam||0)>=5?'':'red'}">${r.grades?.exam||0}/10</div>
+        </div>
+      </div>
+
+      ${r.status==='pending' ? `<div class="flex gap8 flex-wrap items-center" style="border-top:1px solid var(--border);padding-top:12px">
+        <input id="note-${r.id}" placeholder="Note to teacher (optional)" style="flex:1;min-width:180px"/>
+        <button class="btn-gold" style="padding:6px 14px;font-size:13px" onclick="reviewReport('${r.id}','approved')">✅ Approve</button>
+        <button class="btn-danger" style="padding:6px 14px;font-size:13px" onclick="reviewReport('${r.id}','rejected')">❌ Reject</button>
+      </div>` : r.admin_note ? `<div class="f12 muted">💬 Note: ${r.admin_note}</div>` : ''}
+    </div>`;
+  };
+
+  let html = '';
+  if (pending.length) {
+    html += `<div class="f14 bold mb8">⏳ Pending Review (${pending.length})</div>`;
+    html += pending.map(renderReport).join('');
+  }
+  if (done.length) {
+    html += `<details style="margin-top:12px"><summary class="f13 muted" style="cursor:pointer;padding:8px 0">✅ Reviewed (${done.length})</summary><div class="mt8">${done.map(renderReport).join('')}</div></details>`;
+  }
+  el.innerHTML = html;
+};
+
+const reviewReport = async (rid, status) => {
+  const note = document.getElementById('note-'+rid)?.value||'';
+  try {
+    await sbFetch(`monthly_reports?id=eq.${rid}`, {
+      method: 'PATCH',
+      headers:{'Prefer':'return=minimal'},
+      body: JSON.stringify({status, admin_note:note, reviewed_at:new Date().toISOString()})
+    });
+    reportsCache = null;
+    notify(status==='approved'?'✅ Report approved':'❌ Report rejected', status==='approved');
+    logAction(status==='approved'?'Approved report':'Rejected report', rid);
+    loadReports(true);
+  } catch(e) { notify('⚠️ '+e.message, false); }
 };
 
 // ── Init ──────────────────────────────────────────────────────────────────────
