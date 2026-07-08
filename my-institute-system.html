@@ -484,9 +484,9 @@ button:hover{opacity:.85}
       <input id="edit-teacher-rate" type="number" min="0" step="0.5" placeholder="5"/>
     </div>
     <div class="form-group">
-      <label class="label">Hours (this month – manual override)</label>
-      <input id="edit-teacher-hours" type="number" min="0" step="0.5" placeholder="0"/>
-      <div class="f12 muted mt8">ℹ️ Overrides the auto-calculated hours from student logs</div>
+      <label class="label">Manual Hours Adjustment (+/-)</label>
+      <input id="edit-teacher-hours" type="number" step="0.5" placeholder="0"/>
+      <div class="f12 muted mt8">ℹ️ Added on top of the auto-calculated hours from attendance (use a negative number to subtract). New attendance keeps counting normally after this — it does NOT freeze the total.</div>
     </div>
     <div class="form-group">
       <label class="label">Bonus / Extra Pay ($)</label>
@@ -959,13 +959,16 @@ const rem = s => (s.hoursBought||0)-(s.hoursUsed||0);
 const badgeClass = r => r<=1?'badge-red':r<=3?'badge-amber':'badge-green';
 const teacherRate = t => t.rate||DEFAULT_TEACHER_RATE;
 
-// Effective hours for a teacher: manual override wins, else sum from students
+// Effective hours for a teacher = hours actually logged via attendance,
+// PLUS an optional manual adjustment (+/-) for correcting mistakes.
+// This is intentionally additive rather than a hard override: new attendance
+// logged after a manual correction still keeps counting normally.
 const teacherHours = tid => {
   const t = teachers.find(t=>t.id===tid);
-  if (t && t.hoursOverride !== null && t.hoursOverride !== undefined && t.hoursOverride !== '') {
-    return parseFloat(t.hoursOverride)||0;
-  }
-  return students.filter(s=>s.teacherId===tid).reduce((a,s)=>a+(s.hoursUsed||0),0);
+  const autoHours = students.filter(s=>s.teacherId===tid).reduce((a,s)=>a+(s.hoursUsed||0),0);
+  const adjustment = (t && t.hoursOverride !== null && t.hoursOverride !== undefined && t.hoursOverride !== '')
+    ? (parseFloat(t.hoursOverride)||0) : 0;
+  return autoHours + adjustment;
 };
 const teacherStudents = tid => students.filter(s=>s.teacherId===tid);
 const getUsdRate = () => parseFloat(document.getElementById('usd-rate')?.value)||0;
@@ -1271,6 +1274,7 @@ const renderTeachers=()=>{
       const hrs=teacherHours(t.id),sts=teacherStudents(t.id),rate=teacherRate(t),bonus=parseFloat(t.bonus)||0;
       const total=(hrs*rate+bonus).toFixed(2);
       const isOverride=t.hoursOverride!==null&&t.hoursOverride!==undefined&&t.hoursOverride!=='';
+      const adjVal=isOverride?parseFloat(t.hoursOverride)||0:0;
       return `<div class="card student-card">
         <div class="flex justify-between items-center flex-wrap gap8 mb12">
           <div>
@@ -1279,7 +1283,7 @@ const renderTeachers=()=>{
             <div class="muted f12">Joined ${t.joinedAt}</div>
           </div>
           <div class="flex gap8 items-center flex-wrap">
-            <span class="badge badge-amber">${hrs}h${isOverride?' ✏️':''}</span>
+            <span class="badge badge-amber">${hrs}h${isOverride?` ✏️(${adjVal>=0?'+':''}${adjVal})`:''}</span>
             <span class="badge badge-red">$${total}</span>
             ${bonus>0?`<span class="badge badge-blue">+$${bonus.toFixed(2)} bonus</span>`:''}
             <button class="btn-ghost" onclick="openEditTeacher('${t.id}')">✏️ Edit</button>
@@ -1393,11 +1397,12 @@ const renderSalary=()=>{
       const hrs=teacherHours(t.id), rate=teacherRate(t), bonus=parseFloat(t.bonus)||0;
       const baseSalary=(hrs*rate).toFixed(2), totalUsd=(hrs*rate+bonus).toFixed(2);
       const isOverride=t.hoursOverride!==null&&t.hoursOverride!==undefined&&t.hoursOverride!=='';
+      const adjVal=isOverride?parseFloat(t.hoursOverride)||0:0;
       return `<div class="card mb12">
         <div class="flex justify-between items-center flex-wrap gap8 mb12">
           <div>
             <div class="bold f15">${t.name}</div>
-            <div class="f12 muted mt4">Rate: $${rate}/h${isOverride?' · ✏️ Hours overridden':''}</div>
+            <div class="f12 muted mt4">Rate: $${rate}/h${isOverride?` · ✏️ Manual adjustment: ${adjVal>=0?'+':''}${adjVal}h`:''}</div>
           </div>
           <div class="flex gap8 flex-wrap">
             <span class="badge badge-amber">${hrs}h taught</span>
