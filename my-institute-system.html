@@ -976,6 +976,16 @@ const teacherStudents = tid => students.filter(s=>s.teacherId===tid);
 const getUsdRate = () => parseFloat(document.getElementById('usd-rate')?.value)||0;
 
 // ── WhatsApp Messages ─────────────────────────────────────────────────────────
+// Encouraging lines rotated into the post-session WhatsApp message sent to students
+const ENCOURAGING_PHRASES = [
+  "Great effort today — keep up the wonderful progress!",
+  "Masha'Allah, you're doing really well. Keep going!",
+  "Proud of your progress this session — keep it up!",
+  "You're improving every session, keep up the great work!",
+  "Well done today! Consistency like this will take you far.",
+  "Excellent session — your hard work is really showing!",
+];
+
 // Build a wa.me deep-link straight to a specific number's chat with the message pre-filled.
 // Strips spaces/dashes/plus signs and leading zeros; expects the number to include country code.
 // Returns null if no phone is on file, so callers can fall back to the "choose contact" flow.
@@ -1720,15 +1730,20 @@ const loadAttendance = async (forceRefresh=false) => {
     const stu = students.find(s=>s.id===r.student_id);
     const remaining = stu ? Math.max(0,(stu.hoursBought||0)-(stu.hoursUsed||0)) : null;
 
-    // Build combined message
+    // Build combined message: homework + an encouraging line + remaining hours
+    const encouragement = ENCOURAGING_PHRASES[Math.floor(Math.random()*ENCOURAGING_PHRASES.length)];
     const combinedMsg = [
       `📚 Homework: ${homework}`,
       sideNote ? `💬 Note: ${sideNote}` : '',
+      '',
+      `🌟 ${encouragement}`,
+      '',
       remaining !== null ? `⏳ Remaining hours: ${remaining}h` : '',
       remaining === 0 ? `⚠️ Please renew your hours to continue sessions.` : '',
-    ].filter(Boolean).join('\n');
+    ].filter(l=>l!==undefined).join('\n');
 
     const msgId = 'msg_' + r.id;
+    const rowDirectLink = waDirectLink(stu?.phone, combinedMsg);
     return `<div class="salary-row" style="flex-direction:column;align-items:flex-start;gap:8px;padding:14px 0">
       <div class="flex justify-between items-center" style="width:100%">
         <div>
@@ -1749,10 +1764,15 @@ const loadAttendance = async (forceRefresh=false) => {
         ${sideNote ? `<div class="f12 muted mt4">💬 ${sideNote}</div>` : ''}
         ${remaining !== null ? `<div class="f12 mt4" style="color:${remaining<=1?'var(--red)':remaining<=3?'var(--gold)':'var(--green)'}">⏳ ${remaining}h remaining</div>` : ''}
         <textarea id="${msgId}_text" style="display:none">${combinedMsg}</textarea>
-        <button onclick="copyAttendanceMsg('${msgId}')"
-          style="margin-top:8px;padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--gold);border-radius:6px;cursor:pointer;color:var(--gold);font-weight:600">
-          📋 Copy Full Message
-        </button>
+        ${rowDirectLink
+          ? `<button onclick="window.open('${rowDirectLink}','_blank')"
+              style="margin-top:8px;padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--gold);border-radius:6px;cursor:pointer;color:var(--gold);font-weight:600">
+              📲 Send WhatsApp
+            </button>`
+          : `<button onclick="copyAttendanceMsg('${msgId}')"
+              style="margin-top:8px;padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--gold);border-radius:6px;cursor:pointer;color:var(--gold);font-weight:600">
+              📋 Copy Full Message
+            </button>`}
       </div>` : ''}
     </div>`;
   };
