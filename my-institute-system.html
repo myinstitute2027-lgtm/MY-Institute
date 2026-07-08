@@ -585,6 +585,12 @@ button:hover{opacity:.85}
       <input id="grade-exam" type="number" min="0" max="10" step="0.5" placeholder="0-10"/>
     </div>
 
+    <!-- Teacher comment (free text, not a grade) -->
+    <div class="form-group">
+      <label class="label">Teacher's Comment</label>
+      <textarea id="report-comment" placeholder="Write your comments about the student's progress this month..." style="min-height:90px;resize:vertical"></textarea>
+    </div>
+
     <div id="report-error" class="f12 red mb8" style="display:none"></div>
     <div class="flex gap8 mt12">
       <button class="btn-gold flex1" onclick="submitReport()">📤 Submit for Review</button>
@@ -811,7 +817,28 @@ const persist = async () => {
   try {
     await sbUpsert('teachers', teachers, teacherToDb);
     await sbUpsert('students', students, studentToDb);
-  } catch(e) { notify('⚠️ Could not save to database: '+e.message, false); }
+    return true;
+  } catch(e) { notify('⚠️ Could not save to database: '+e.message, false); return false; }
+};
+
+// Refetch just teachers+students from Supabase (role-aware) and refresh in-memory state.
+// Used to keep Salary / Students / Dashboard numbers accurate even if another
+// admin/teacher session updated the data since this page was loaded.
+const refreshCoreData = async () => {
+  try {
+    if (isAdmin()) {
+      const [teacherRows, studentRows] = await Promise.all([ sbSelect('teachers'), sbSelect('students') ]);
+      teachers = (teacherRows||[]).map(teacherFromDb);
+      students = (studentRows||[]).map(studentFromDb);
+    } else if (isTeacherRole()) {
+      const [teacherRows, studentRows] = await Promise.all([
+        sbSelect('teachers'),
+        sbSelect('students', `&teacher_id=eq.${encodeURIComponent(currentUser.teacherId)}`)
+      ]);
+      teachers = (teacherRows||[]).map(teacherFromDb);
+      students = (studentRows||[]).map(studentFromDb);
+    }
+  } catch(e) { /* non-fatal: keep showing last-known cached data */ }
 };
 
 // ── History / Archive ───────────────────────────────────────────────────────
@@ -907,7 +934,7 @@ const notify = (msg, ok=true) => {
 const ADMIN_ONLY_PAGES = ['dashboard','teachers','students','salary','schedule','history','auditlog','attendance','reports','addTeacher','addStudent'];
 const TEACHER_ONLY_PAGES = ['mystudents','myschedule','mysalary'];
 
-const showPage = id => {
+const showPage = async id => {
   // Defense in depth: block a teacher account from ever rendering an admin page (and vice versa)
   if (isTeacherRole() && ADMIN_ONLY_PAGES.includes(id)) id = 'mystudents';
   if (isAdmin() && TEACHER_ONLY_PAGES.includes(id)) id = 'dashboard';
@@ -917,6 +944,13 @@ const showPage = id => {
   document.getElementById('page-'+id).classList.add('active');
   const navBtn = document.getElementById('nav-'+id);
   if (navBtn) navBtn.classList.add('active');
+
+  // Render immediately with whatever is cached, so navigation feels instant...
+  renderAll();
+  // ...then pull the latest teachers/students from the database and re-render.
+  // This guarantees hours logged via Attendance (which change hoursUsed/salary)
+  // are reflected here even if this session's data was loaded before that happened.
+  await refreshCoreData();
   renderAll();
 };
 
@@ -1579,9 +1613,17 @@ const submitAttendance = async () => {
     }
   } catch(e) { /* non-fatal */ }
 
-  // Log hours
+  // Log hours (kept in a local var so we can roll back cleanly if saving fails)
+  const previousStudents = students;
   students = students.map(s => s.id === sid ? {...s, hoursUsed: (s.hoursUsed||0) + hours} : s);
-  persist();
+  const saved = await persist();
+  if (!saved) {
+    // Roll back the local change — nothing was actually saved, so don't pretend it was.
+    students = previousStudents;
+    errEl.textContent = '⚠️ Could not save the hours to the database. Please try again.';
+    errEl.style.display = 'block';
+    return;
+  }
 
   // Save to DB
   try {
@@ -1726,7 +1768,7 @@ const deleteAttendance = async (aid, sid, hours) => {
   try {
     await sbFetch(`attendance_log?id=eq.${aid}`, { method: 'DELETE' });
     students = students.map(s => s.id === sid ? {...s, hoursUsed: Math.max(0,(s.hoursUsed||0)-hours)} : s);
-    persist();
+    await persist();
     attendanceCache = null;
     notify('↩️ Attendance cancelled and hours reversed', true);
     renderAll();
@@ -2413,6 +2455,7 @@ const openNewReport = (reportId=null) => {
   SUBJECTS.forEach(s=>document.getElementById('subj-'+s.id).checked=false);
   GRADE_KEYS.forEach(k=>document.getElementById('grade-'+k).value='');
   document.getElementById('grade-exam').value='';
+  document.getElementById('report-comment').value='';
   document.getElementById('report-progress-section').innerHTML='';
 
   document.getElementById('report-overlay').classList.add('open');
@@ -2493,6 +2536,9 @@ const submitReport = async () => {
   if (selectedSubjects.includes('islamic')) {
     progress.islamic = { from: document.getElementById('is-from')?.value||'', to: document.getElementById('is-to')?.value||'' };
   }
+  // Free-text comment from the teacher (kept separate from the numeric grades object
+  // so it never gets pulled into the average-grade calculation).
+  progress.comment = document.getElementById('report-comment').value.trim();
 
   const report = {
     id: uid(),
@@ -2547,6 +2593,7 @@ const renderMyReports = async () => {
           </div>
           ${statusBadge}
         </div>
+        ${r.progress?.comment ? `<div class="f12 mt8">📝 ${r.progress.comment}</div>` : ''}
         ${r.admin_note ? `<div class="f12 muted mt8">💬 Admin: ${r.admin_note}</div>` : ''}
       </div>`;
     }).join('');
@@ -2589,6 +2636,8 @@ const loadReports = async (forceRefresh=false) => {
       ...GRADE_KEYS.map(k=>`  • ${k.charAt(0).toUpperCase()+k.slice(1)}: ${r.grades?.[k]||0}/10`),
       `  • Monthly Exam: ${r.grades?.exam||0}/10`,
       `  • Average: ${avg}/10`,
+      p.comment ? '' : undefined,
+      p.comment ? `📝 Teacher's Comment: ${p.comment}` : undefined,
     ].filter(l=>l!==undefined).join('\n');
 
     const msgId = 'rep_'+r.id;
@@ -2612,6 +2661,11 @@ const loadReports = async (forceRefresh=false) => {
         ${p.quran?`<div class="f13">📖 Quran: ${p.quran.fromSurah} ${p.quran.fromVerse} → ${p.quran.toSurah} ${p.quran.toVerse}${p.quran.tajweed?` | Tajweed: ${p.quran.tajweed}`:''}</div>`:''}
         ${p.arabic?`<div class="f13">🌍 Arabic: ${p.arabic.from} → ${p.arabic.to}</div>`:''}
         ${p.islamic?`<div class="f13">☪️ Islamic Studies: ${p.islamic.from} → ${p.islamic.to}</div>`:''}
+      </div>` : ''}
+
+      ${p.comment ? `<div style="border-top:1px solid var(--border);padding-top:10px;margin-bottom:10px">
+        <div class="f12 muted mb6">📝 Teacher's Comment</div>
+        <div class="f13">${p.comment}</div>
       </div>` : ''}
 
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px">
