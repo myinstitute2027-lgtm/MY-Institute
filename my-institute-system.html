@@ -219,6 +219,7 @@ button:hover{opacity:.85}
     <div class="card" style="max-width:440px">
       <div class="form-group"><label class="label">Name *</label><input id="new-student-name" placeholder="Ahmed Ali"/></div>
       <div class="form-group"><label class="label">Email</label><input id="new-student-email" placeholder="ahmed@email.com"/></div>
+      <div class="form-group"><label class="label">Phone (WhatsApp, with country code)</label><input id="new-student-phone" placeholder="e.g. 201001234567"/></div>
       <div class="form-group"><label class="label">Assign Teacher *</label>
         <select id="new-student-teacher"><option value="">Select teacher...</option></select>
       </div>
@@ -510,6 +511,7 @@ button:hover{opacity:.85}
     <input type="hidden" id="edit-student-id"/>
     <div class="form-group"><label class="label">Name *</label><input id="edit-student-name" placeholder="Student name"/></div>
     <div class="form-group"><label class="label">Email</label><input id="edit-student-email" placeholder="email@example.com"/></div>
+    <div class="form-group"><label class="label">Phone (WhatsApp, with country code)</label><input id="edit-student-phone" placeholder="e.g. 201001234567"/></div>
     <div class="form-group"><label class="label">Assign Teacher</label>
       <select id="edit-student-teacher"></select>
     </div>
@@ -704,12 +706,12 @@ const teacherFromDb = r => ({
   bonus:r.bonus||0, bonusNote:r.bonus_note||''
 });
 const studentToDb = s => ({
-  id:s.id, name:s.name, email:s.email||'', teacher_id:s.teacherId||null,
+  id:s.id, name:s.name, email:s.email||'', teacher_id:s.teacherId||null, phone:s.phone||'',
   hours_bought:s.hoursBought||0, hours_used:s.hoursUsed||0, code:s.code||'', joined_at:s.joinedAt||'',
   is_trial: s.isTrial||false, rate:s.rate||0, currency:s.currency||'GBP'
 });
 const studentFromDb = r => ({
-  id:r.id, name:r.name, email:r.email||'', teacherId:r.teacher_id||'',
+  id:r.id, name:r.name, email:r.email||'', teacherId:r.teacher_id||'', phone:r.phone||'',
   hoursBought:r.hours_bought||0, hoursUsed:r.hours_used||0, code:r.code||'', joinedAt:r.joined_at||'',
   isTrial: r.is_trial||false, rate:r.rate||0, currency:r.currency||'GBP'
 });
@@ -974,6 +976,16 @@ const teacherStudents = tid => students.filter(s=>s.teacherId===tid);
 const getUsdRate = () => parseFloat(document.getElementById('usd-rate')?.value)||0;
 
 // ── WhatsApp Messages ─────────────────────────────────────────────────────────
+// Build a wa.me deep-link straight to a specific number's chat with the message pre-filled.
+// Strips spaces/dashes/plus signs and leading zeros; expects the number to include country code.
+// Returns null if no phone is on file, so callers can fall back to the "choose contact" flow.
+const waDirectLink = (phone, msg) => {
+  if (!phone) return null;
+  const digits = phone.replace(/[^\d]/g,'').replace(/^0+/,'');
+  if (!digits) return null;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
+};
+
 const whatsappMsg = s => {
   const r=rem(s), t=teachers.find(t=>t.id===s.teacherId);
   const isDebt = r<0;
@@ -1089,6 +1101,7 @@ const deleteTeacher = tid => {
 const addStudent = () => {
   const name=document.getElementById('new-student-name').value.trim();
   const email=document.getElementById('new-student-email').value.trim();
+  const phone=document.getElementById('new-student-phone').value.trim();
   const tid=document.getElementById('new-student-teacher').value;
   const hours=parseFloat(document.getElementById('new-student-hours').value)||0;
   const rate=parseFloat(document.getElementById('new-student-rate').value)||0;
@@ -1096,10 +1109,10 @@ const addStudent = () => {
   const isTrial=document.getElementById('new-student-type-trial').checked;
   if (!name||!tid) return notify('Fill all required fields',false);
   const code=genCode(name);
-  students.push({id:uid(),name,email,teacherId:tid,code,hoursBought:isTrial?1:hours,hoursUsed:0,joinedAt:new Date().toLocaleDateString('en-GB'),isTrial,rate,currency});
+  students.push({id:uid(),name,email,phone,teacherId:tid,code,hoursBought:isTrial?1:hours,hoursUsed:0,joinedAt:new Date().toLocaleDateString('en-GB'),isTrial,rate,currency});
   persist(); notify(name+' added · Code: '+code+(isTrial?' 🎯 Trial':''));
   logAction('Added student', name+(isTrial?' [Trial]':''));
-  ['new-student-name','new-student-email','new-student-hours'].forEach(id=>document.getElementById(id).value='');
+  ['new-student-name','new-student-email','new-student-phone','new-student-hours'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('new-student-teacher').value='';
   document.getElementById('new-student-type-regular').checked=true;
   showPage('students');
@@ -1159,6 +1172,12 @@ const closeModal=()=>document.getElementById('modal-overlay').classList.remove('
 
 const closeMsgModal=()=>document.getElementById('msg-overlay').style.display='none';
 const copyMsg=sid=>{ const s=students.find(s=>s.id===sid); if(!s) return; document.getElementById('msg-preview').value=whatsappMsg(s); document.getElementById('copy-btn').textContent='📋 Copy Message'; document.getElementById('msg-overlay').style.display='flex'; };
+const sendWhatsappDirect=sid=>{
+  const s=students.find(s=>s.id===sid); if(!s) return;
+  const link=waDirectLink(s.phone, whatsappMsg(s));
+  if (!link) { copyMsg(sid); return; } // no valid phone on file — fall back to copy flow
+  window.open(link, '_blank');
+};
 
 const closeSalaryReport=()=>document.getElementById('salary-report-overlay').style.display='none';
 const openSalaryReport=tid=>{ document.getElementById('salary-report-preview').value=salaryReport(tid); document.getElementById('salary-copy-btn').textContent='📋 Copy Report'; document.getElementById('salary-report-overlay').style.display='flex'; };
@@ -1199,6 +1218,7 @@ const openEditStudent=sid=>{ const s=students.find(s=>s.id===sid); if(!s) return
   document.getElementById('edit-student-id').value=s.id;
   document.getElementById('edit-student-name').value=s.name;
   document.getElementById('edit-student-email').value=s.email||'';
+  document.getElementById('edit-student-phone').value=s.phone||'';
   document.getElementById('edit-student-bought').value=s.hoursBought||0;
   document.getElementById('edit-student-used').value=s.hoursUsed||0;
   document.getElementById('edit-student-rate').value=s.rate||0;
@@ -1217,6 +1237,7 @@ const saveEditStudent=()=>{
   students=students.map(s=>s.id!==sid?s:{...s,
     name,
     email:document.getElementById('edit-student-email').value.trim(),
+    phone:document.getElementById('edit-student-phone').value.trim(),
     teacherId:document.getElementById('edit-student-teacher').value,
     hoursBought:parseFloat(document.getElementById('edit-student-bought').value)||0,
     hoursUsed:parseFloat(document.getElementById('edit-student-used').value)||0,
@@ -1334,7 +1355,9 @@ const renderStudents=()=>{
         </div>
         <div class="flex gap8 items-center flex-wrap">
           <span class="badge ${badgeClass(r)}">${isDebt?'−'+Math.abs(r)+'h owed':r+'h remaining'}</span>
-          <button class="btn-green" onclick="copyMsg('${s.id}')">📋 Message</button>
+          ${s.phone
+            ? `<button class="btn-green" onclick="sendWhatsappDirect('${s.id}')">📲 Send WhatsApp</button>`
+            : `<button class="btn-green" onclick="copyMsg('${s.id}')">📋 Message</button>`}
           <button class="btn-ghost" onclick="openEditStudent('${s.id}')">✏️ Edit</button>
           <button class="btn-danger" onclick="deleteStudent('${s.id}')">Remove</button>
         </div>
@@ -2646,6 +2669,8 @@ const loadReports = async (forceRefresh=false) => {
     ].filter(l=>l!==undefined).join('\n');
 
     const msgId = 'rep_'+r.id;
+    const repStudent = students.find(st=>st.id===r.student_id);
+    const repDirectLink = waDirectLink(repStudent?.phone, waLines);
     return `<div class="card mb12">
       <div class="flex justify-between items-center flex-wrap gap8 mb12">
         <div>
@@ -2657,7 +2682,9 @@ const loadReports = async (forceRefresh=false) => {
         <div class="flex gap8 flex-wrap">
           <span class="badge badge-amber">Avg: ${avg}/10</span>
           <textarea id="${msgId}_text" style="display:none">${waLines}</textarea>
-          <button onclick="copyAttendanceMsg('${msgId}')" style="padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--gold);border-radius:6px;cursor:pointer;color:var(--gold)">📋 Copy WhatsApp</button>
+          ${repDirectLink
+            ? `<button onclick="window.open('${repDirectLink}','_blank')" style="padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--gold);border-radius:6px;cursor:pointer;color:var(--gold)">📲 Send WhatsApp</button>`
+            : `<button onclick="copyAttendanceMsg('${msgId}')" style="padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--gold);border-radius:6px;cursor:pointer;color:var(--gold)">📋 Copy WhatsApp</button>`}
         </div>
       </div>
 
