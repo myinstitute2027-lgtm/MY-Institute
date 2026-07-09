@@ -996,16 +996,34 @@ const waDirectLink = (phone, msg) => {
   return `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
 };
 
-const whatsappMsg = s => {
+// Fetch the most recently logged homework note for a student (used to build the WhatsApp message).
+// Returns { homework, sideNote } — both '' if nothing has been logged yet.
+const getLatestHomework = async sid => {
+  try {
+    const rows = await sbFetch(`attendance_log?student_id=eq.${sid}&select=note&order=logged_at.desc&limit=1`);
+    if (!rows || !rows.length) return { homework:'', sideNote:'' };
+    const parts = (rows[0].note||'').split(' | Note: ');
+    return { homework: parts[0]||'', sideNote: parts[1]||'' };
+  } catch(e) { return { homework:'', sideNote:'' }; }
+};
+
+const whatsappMsg = async s => {
   const r=rem(s), t=teachers.find(t=>t.id===s.teacherId);
   const isDebt = r<0;
+  const { homework, sideNote } = await getLatestHomework(s.id);
+  const encouragement = ENCOURAGING_PHRASES[Math.floor(Math.random()*ENCOURAGING_PHRASES.length)];
 
   let lines = [
     `Dear ${s.name},`,
     '',
     `Thank you for attending your session with ${t?.name||'your teacher'}.`,
-    `⏳ Hours Remaining: ${isDebt ? '0h ('+Math.abs(r)+'h overdue)' : r+'h'}`
   ];
+
+  if (homework) lines.push('', `📚 Homework: ${homework}`);
+  if (sideNote) lines.push(`💬 Note: ${sideNote}`);
+
+  lines.push('', `🌟 ${encouragement}`);
+  lines.push('', `⏳ Hours Remaining: ${isDebt ? '0h ('+Math.abs(r)+'h overdue)' : r+'h'}`);
 
   if (r<=0) {
     lines.push('', 'Kindly renew your subscription at your earliest convenience to continue your sessions without interruption.');
@@ -1181,12 +1199,22 @@ const openPromoModal=()=>{ document.getElementById('promo-code').value=''; docum
 const closeModal=()=>document.getElementById('modal-overlay').classList.remove('open');
 
 const closeMsgModal=()=>document.getElementById('msg-overlay').style.display='none';
-const copyMsg=sid=>{ const s=students.find(s=>s.id===sid); if(!s) return; document.getElementById('msg-preview').value=whatsappMsg(s); document.getElementById('copy-btn').textContent='📋 Copy Message'; document.getElementById('msg-overlay').style.display='flex'; };
-const sendWhatsappDirect=sid=>{
+const copyMsg=async sid=>{
   const s=students.find(s=>s.id===sid); if(!s) return;
-  const link=waDirectLink(s.phone, whatsappMsg(s));
-  if (!link) { copyMsg(sid); return; } // no valid phone on file — fall back to copy flow
-  window.open(link, '_blank');
+  document.getElementById('msg-preview').value='Loading latest homework…';
+  document.getElementById('copy-btn').textContent='📋 Copy Message';
+  document.getElementById('msg-overlay').style.display='flex';
+  document.getElementById('msg-preview').value=await whatsappMsg(s);
+};
+const sendWhatsappDirect=async sid=>{
+  const s=students.find(s=>s.id===sid); if(!s) return;
+  // Open the tab synchronously (on the click itself) so browsers don't block it
+  // while we fetch the latest homework in the background; redirect it once ready.
+  const w = window.open('', '_blank');
+  const msg = await whatsappMsg(s);
+  const link = waDirectLink(s.phone, msg);
+  if (!link) { if(w) w.close(); copyMsg(sid); return; } // no valid phone on file — fall back to copy flow
+  if (w) w.location.href = link; else window.open(link, '_blank');
 };
 
 const closeSalaryReport=()=>document.getElementById('salary-report-overlay').style.display='none';
