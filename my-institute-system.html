@@ -978,12 +978,14 @@ const getUsdRate = () => parseFloat(document.getElementById('usd-rate')?.value)|
 // ── WhatsApp Messages ─────────────────────────────────────────────────────────
 // Encouraging lines rotated into the post-session WhatsApp message sent to students
 const ENCOURAGING_PHRASES = [
-  "Great effort today — keep up the wonderful progress!",
-  "Masha'Allah, you're doing really well. Keep going!",
-  "Proud of your progress this session — keep it up!",
-  "You're improving every session, keep up the great work!",
-  "Well done today! Consistency like this will take you far.",
-  "Excellent session — your hard work is really showing!",
+  "🌟 Great effort today — keep up the wonderful progress!",
+  "✨ Masha'Allah, you're doing really well. Keep going!",
+  "💪 So proud of your progress this session — keep it up!",
+  "🚀 You're improving every session, keep up the great work!",
+  "🎉 Well done today! Consistency like this will take you far.",
+  "🔥 Excellent session — your hard work is really showing!",
+  "🌸 Beautiful effort today, we're proud of you!",
+  "🏆 You should be proud of yourself — amazing work today!",
 ];
 
 // Build a wa.me deep-link straight to a specific number's chat with the message pre-filled.
@@ -1014,22 +1016,22 @@ const whatsappMsg = async s => {
   const encouragement = ENCOURAGING_PHRASES[Math.floor(Math.random()*ENCOURAGING_PHRASES.length)];
 
   let lines = [
-    `Dear ${s.name},`,
+    `🌙 Dear ${s.name},`,
     '',
-    `Thank you for attending your session with ${t?.name||'your teacher'}.`,
+    `✅ Thank you for attending your session with ${t?.name||'your teacher'} today!`,
   ];
 
   if (homework) lines.push('', `📚 Homework: ${homework}`);
   if (sideNote) lines.push(`💬 Note: ${sideNote}`);
 
-  lines.push('', `🌟 ${encouragement}`);
-  lines.push('', `⏳ Hours Remaining: ${isDebt ? '0h ('+Math.abs(r)+'h overdue)' : r+'h'}`);
+  lines.push('', encouragement);
+  lines.push('', `⏳ Hours Remaining: ${isDebt ? '0h ('+Math.abs(r)+'h overdue) 🔴' : r+'h ✅'}`);
 
   if (r<=0) {
-    lines.push('', 'Kindly renew your subscription at your earliest convenience to continue your sessions without interruption.');
+    lines.push('', '🔔 Kindly renew your subscription at your earliest convenience to continue your sessions without interruption.');
   }
 
-  lines.push('', 'Best regards,', INSTITUTE_NAME);
+  lines.push('', '💛 Best regards,', `${INSTITUTE_NAME} 🌟`);
   return lines.join('\n');
 };
 
@@ -1758,16 +1760,22 @@ const loadAttendance = async (forceRefresh=false) => {
     const stu = students.find(s=>s.id===r.student_id);
     const remaining = stu ? Math.max(0,(stu.hoursBought||0)-(stu.hoursUsed||0)) : null;
 
-    // Build combined message: homework + an encouraging line + remaining hours
+    // Build combined message: warm greeting + homework + an encouraging line + remaining hours
     const encouragement = ENCOURAGING_PHRASES[Math.floor(Math.random()*ENCOURAGING_PHRASES.length)];
     const combinedMsg = [
-      `📚 Homework: ${homework}`,
+      `🌙 Dear ${stu?.name||r.student_name},`,
+      '',
+      `✅ Thank you for attending your session today!`,
+      '',
+      homework ? `📚 Homework: ${homework}` : '',
       sideNote ? `💬 Note: ${sideNote}` : '',
       '',
-      `🌟 ${encouragement}`,
+      encouragement,
       '',
-      remaining !== null ? `⏳ Remaining hours: ${remaining}h` : '',
-      remaining === 0 ? `⚠️ Please renew your hours to continue sessions.` : '',
+      remaining !== null ? `⏳ Remaining hours: ${remaining}h ${remaining>0?'✅':'🔴'}` : '',
+      remaining === 0 ? `🔔 Please renew your hours to continue sessions.` : '',
+      '',
+      '💛 Best regards,', `${INSTITUTE_NAME} 🌟`,
     ].filter(l=>l!==undefined).join('\n');
 
     const msgId = 'msg_' + r.id;
