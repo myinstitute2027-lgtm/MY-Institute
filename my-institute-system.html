@@ -12,7 +12,7 @@
   --gold:#c9a84c;--gold2:#a87c2a;--green:#5dba7e;--green-bg:#0f2d1a;--green-border:#2a6b40;
   --red:#f07070;--red-bg:#2d1418;--red-border:#6b2030;--blue:#58a6ff;
 }
-body{background:var(--bg);color:var(--text);font-family:'EB Garamond',serif;min-height:100vh}
+body{background:var(--bg);color:var(--text);font-family:'EB Garamond',serif,'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji','Segoe UI Symbol';min-height:100vh}
 input,select{background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:14px;padding:10px 14px;width:100%;outline:none;transition:border .2s}
 input:focus,select:focus{border-color:var(--gold)}
 input::placeholder{color:var(--muted)}
@@ -131,10 +131,13 @@ button:hover{opacity:.85}
   <button class="nav-btn" id="nav-auditlog" onclick="showPage('auditlog')">📋 Activity Log</button>
   <button class="nav-btn" id="nav-attendance" onclick="showPage('attendance')">✅ Attendance</button>
   <button class="nav-btn" id="nav-reports" onclick="showPage('reports')">📝 Reports</button>
+  <button class="nav-btn" id="nav-phrases" onclick="showPage('phrases')">💬 Message Phrases</button>
   <button class="nav-btn" id="nav-myreports" onclick="showPage('myreports')" style="display:none">📝 My Reports</button>
   <button class="nav-btn" id="nav-mystudents" onclick="showPage('mystudents')" style="display:none">📚 My Students</button>
   <button class="nav-btn" id="nav-myschedule" onclick="showPage('myschedule')" style="display:none">📅 My Schedule</button>
   <button class="nav-btn" id="nav-mysalary" onclick="showPage('mysalary')" style="display:none">💵 My Salary</button>
+  <button class="nav-btn" id="nav-mynotifs" onclick="showPage('mynotifs')" style="display:none">🔔 Reminders <span id="notif-badge" style="display:none;background:var(--red);color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 6px;margin-left:4px"></span></button>
+  <button class="nav-btn" id="nav-sendnotifs" onclick="showPage('sendnotifs')" style="display:none">📣 Send Reminder</button>
 </div>
 
 <div id="content">
@@ -330,6 +333,34 @@ button:hover{opacity:.85}
     <div id="reports-content"></div>
   </div>
 
+  <!-- ADMIN: MESSAGE PHRASES -->
+  <div class="page" id="page-phrases">
+    <div class="f18 bold mb8">💬 Message Phrases</div>
+    <div class="f12 muted mb16">
+      Every WhatsApp message sent after a session includes a random encouragement, plus a rotating extra line
+      (a hadith, a Qur'an verse, or an invite-a-friend note). The built-in pool already covers 100 encouragements
+      and a small, carefully-checked set of hadith/verses — add your own below to expand any category.
+      <br/><b>Please have your institute's own qualified teacher review any hadith/Qur'an phrases before relying on them.</b>
+    </div>
+    <div class="card mb16">
+      <div class="form-group">
+        <label class="label">Category</label>
+        <select id="new-phrase-category">
+          <option value="encourage">🌟 Encouragement</option>
+          <option value="hadith">📖 Hadith</option>
+          <option value="ayah">📗 Qur'an Verse</option>
+          <option value="referral">🤝 Invite a Friend</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="label">Phrase</label>
+        <textarea id="new-phrase-text" placeholder="Write the phrase here (include the source/reference if it's a hadith or verse)..." style="min-height:70px"></textarea>
+      </div>
+      <button class="btn-gold" onclick="addCustomPhrase()">➕ Add Phrase</button>
+    </div>
+    <div id="phrases-list"></div>
+  </div>
+
   <!-- TEACHER: MY REPORTS -->
   <div class="page" id="page-myreports">
     <div class="f18 bold mb16">📝 Monthly Reports</div>
@@ -341,6 +372,35 @@ button:hover{opacity:.85}
       <button class="btn-gold" onclick="openNewReport()">➕ New Report</button>
     </div>
     <div id="myreports-list"></div>
+  </div>
+
+  <!-- TEACHER: MY NOTIFICATIONS -->
+  <div class="page" id="page-mynotifs">
+    <div class="flex justify-between items-center mb16 flex-wrap gap8">
+      <div class="f18 bold">🔔 Reminders</div>
+      <button class="btn-ghost" onclick="loadMyNotifs(true)">🔄 Refresh</button>
+    </div>
+    <div id="mynotifs-list"></div>
+  </div>
+
+  <!-- ADMIN: SEND REMINDER -->
+  <div class="page" id="page-sendnotifs">
+    <div class="f18 bold mb16">📣 Send Reminder to Teacher</div>
+    <div class="card mb20" style="max-width:500px">
+      <div class="form-group">
+        <label class="label">Send To *</label>
+        <select id="notif-to-teacher">
+          <option value="all">📢 All Teachers</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="label">Message *</label>
+        <textarea id="notif-message" placeholder="e.g. Ahmed changed his session to Wednesday at 5pm this week..." style="min-height:100px;resize:vertical;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:14px;padding:10px 14px;width:100%;outline:none"></textarea>
+      </div>
+      <button class="btn-gold" style="width:100%" onclick="sendNotification()">📤 Send Reminder</button>
+    </div>
+    <div class="f15 bold mb12">📋 Sent Reminders</div>
+    <div id="sent-notifs-list"></div>
   </div>
 
   <!-- TEACHER: MY SALARY -->
@@ -774,8 +834,8 @@ const doLogout = () => {
 
 // Apply role-based visibility of nav items and pages
 const applyRoleUI = () => {
-  const adminNav = ['nav-dashboard','nav-teachers','nav-students','nav-salary','nav-schedule','nav-history','nav-auditlog','nav-attendance','nav-reports'];
-  const teacherNav = ['nav-mystudents','nav-myschedule','nav-mysalary','nav-myreports'];
+  const adminNav = ['nav-dashboard','nav-teachers','nav-students','nav-salary','nav-schedule','nav-history','nav-auditlog','nav-attendance','nav-reports','nav-phrases','nav-sendnotifs'];
+  const teacherNav = ['nav-mystudents','nav-myschedule','nav-mysalary','nav-myreports','nav-mynotifs'];
   if (isAdmin()) {
     adminNav.forEach(id=>document.getElementById(id).style.display='');
     teacherNav.forEach(id=>document.getElementById(id).style.display='none');
@@ -793,6 +853,7 @@ const afterLogin = async () => {
   applyRoleUI();
   await init(); // loads all data, runs monthly reset, calls renderAll()
   if (isAdmin()) refreshBellCount();
+  if (isTeacherRole()) refreshNotifBadge();
   // showPage re-renders with loaded data
   showPage(isAdmin() ? 'dashboard' : 'mystudents');
 };
@@ -933,8 +994,8 @@ const notify = (msg, ok=true) => {
 };
 
 // ── Navigation ────────────────────────────────────────────────────────────────
-const ADMIN_ONLY_PAGES = ['dashboard','teachers','students','salary','schedule','history','auditlog','attendance','reports','addTeacher','addStudent'];
-const TEACHER_ONLY_PAGES = ['mystudents','myschedule','mysalary'];
+const ADMIN_ONLY_PAGES = ['dashboard','teachers','students','salary','schedule','history','auditlog','attendance','reports','addTeacher','addStudent','phrases','sendnotifs'];
+const TEACHER_ONLY_PAGES = ['mystudents','myschedule','mysalary','mynotifs'];
 
 const showPage = async id => {
   // Defense in depth: block a teacher account from ever rendering an admin page (and vice versa)
@@ -946,6 +1007,19 @@ const showPage = async id => {
   document.getElementById('page-'+id).classList.add('active');
   const navBtn = document.getElementById('nav-'+id);
   if (navBtn) navBtn.classList.add('active');
+
+  if (id === 'sendnotifs') {
+    // Populate teacher dropdown
+    const sel = document.getElementById('notif-to-teacher');
+    if (sel) {
+      sel.innerHTML = '<option value="all">📢 All Teachers</option>' +
+        [...teachers].sort((a,b)=>a.name.localeCompare(b.name))
+          .map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+    }
+    loadSentNotifs(true);
+    return;
+  }
+  if (id === 'mynotifs') { loadMyNotifs(true); return; }
 
   // Render immediately with whatever is cached, so navigation feels instant...
   renderAll();
@@ -986,7 +1060,208 @@ const ENCOURAGING_PHRASES = [
   "🔥 Excellent session — your hard work is really showing!",
   "🌸 Beautiful effort today, we're proud of you!",
   "🏆 You should be proud of yourself — amazing work today!",
+  "🌈 Every session brings you closer to your goal — great job!",
+  "🌻 Your dedication really shines through — keep blooming!",
+  "⭐ Fantastic focus today — you're a star!",
+  "🎯 Right on target today — great concentration!",
+  "💎 You're a gem — such wonderful effort today!",
+  "🌞 You lit up the session today with your hard work!",
+  "🕊️ Peaceful, focused, and productive — lovely session today!",
+  "🌱 You're growing beautifully with every lesson!",
+  "🥇 Top-notch effort today — keep striving for excellence!",
+  "💫 You're shining brighter with every session!",
+  "🎈 What a joyful, productive session today!",
+  "🌷 Your progress is blossoming nicely — well done!",
+  "🧠 Sharp thinking today — your mind is growing stronger!",
+  "📈 Steady improvement every session — keep it up!",
+  "🙌 Hands up for a great session today!",
+  "👏 Bravo! Wonderful effort in today's lesson!",
+  "🌺 Such lovely progress today, keep it flourishing!",
+  "🎵 You brought great energy to today's session!",
+  "🦋 Watching you transform and grow is wonderful!",
+  "🏅 A medal-worthy effort today — well done!",
+  "🌙 Even on quiet days, your effort still shines!",
+  "☀️ You brightened today's session with your focus!",
+  "🍀 Lucky to see such great dedication today!",
+  "🎊 Celebrating your progress today — fantastic work!",
+  "🌟 Keep shining — today's effort was excellent!",
+  "💛 Your commitment today was truly heartwarming!",
+  "🌟 Small steps like today's lead to big success!",
+  "🧩 Every session, you're putting the pieces together beautifully!",
+  "🌟 Impressive dedication shown today — keep it up!",
+  "🚴 You're moving forward steadily — great pace today!",
+  "🎓 Building real knowledge today — well done!",
+  "🌟 You handled today's lesson with real confidence!",
+  "🦅 Soaring higher with every session — great job!",
+  "🌟 Your hard work today did not go unnoticed!",
+  "🌟 What a productive and focused session today!",
+  "🌟 You're setting a great example with your effort!",
+  "🌟 Today's session showed real commitment — well done!",
+  "🌟 Keep this momentum going — excellent work today!",
+  "🌟 Your patience and effort today were admirable!",
+  "🌟 A great step forward in your journey today!",
+  "🌟 You tackled today's lesson with real determination!",
+  "🌟 Such thoughtful answers today — great thinking!",
+  "🌟 Your enthusiasm today made the session shine!",
+  "🌟 Consistency is key, and you're nailing it!",
+  "🌟 Today was another great step in your progress!",
+  "🌟 Your focus today was truly impressive!",
+  "🌟 Great job staying engaged throughout the session!",
+  "🌟 You're building excellent habits — keep going!",
+  "🌟 Today's effort will pay off — well done!",
+  "🌟 You handled challenges today with a great attitude!",
+  "🌟 Proud to see your continued dedication today!",
+  "🌟 Your progress today was truly encouraging!",
+  "🌟 Great energy and focus in today's session!",
+  "🌟 You're making real strides — keep it up!",
+  "🌟 Today's lesson showed how much you've grown!",
+  "🌟 Wonderful participation today — well done!",
+  "🌟 Your effort today reflects real commitment!",
+  "🌟 Keep believing in yourself — today proved it!",
+  "🌟 You're building a strong foundation, one session at a time!",
+  "🌟 Today's hard work will lead to great results!",
+  "🌟 Such a positive and productive session today!",
+  "🌟 You're doing an amazing job — stay consistent!",
+  "🌟 Today's effort shows real maturity and focus!",
+  "🌟 Keep up this excellent pace — well done today!",
+  "🌟 Your improvement session after session is inspiring!",
+  "🌟 A wonderful, focused session — proud of you!",
+  "🌟 You handled today's material really well!",
+  "🌟 Great progress — your effort really shows!",
+  "🌟 Today's session was a true reflection of your hard work!",
+  "🌟 Keep pushing forward — you're doing great!",
+  "🌟 Your dedication today was truly commendable!",
+  "🌟 Such great engagement in today's lesson!",
+  "🌟 You're steadily becoming more confident — great job!",
+  "🌟 A strong, focused session today — well done!",
+  "🌟 Your effort today sets you up for great success!",
+  "🌟 Impressive focus and energy today!",
+  "🌟 You're on a wonderful path of growth — keep going!",
+  "🌟 Today's session showed real thoughtfulness — well done!",
+  "🌟 Your consistent effort is truly paying off!",
+  "🌟 Great job today — your progress is clear!",
+  "🌟 You approached today's lesson with real dedication!",
+  "🌟 Keep this fantastic momentum going!",
+  "🌟 Your hard work today truly stood out!",
+  "🌟 A joyful and productive session — well done!",
+  "🌟 You're growing stronger with every lesson!",
+  "🌟 Today's effort reflects your real potential!",
+  "🌟 Wonderful focus and dedication today!",
+  "🌟 You're making excellent progress — keep it up!",
+  "🌟 Such a great attitude in today's session!",
+  "🌟 Your commitment today was truly inspiring!",
+  "🌟 Keep up the fantastic work — proud of you!",
+  "🌟 Today's session was another step toward mastery!",
 ];
+
+// Short, paraphrased (not verbatim-translated) hadith about seeking knowledge/the Qur'an,
+// each with its source cited. Kept to a small, carefully-checked set on purpose — please have
+// your institute's own qualified teacher/Sheikh review these before relying on them.
+const HADITH_PHRASES = [
+  "📖 Whoever follows a path in pursuit of knowledge, Allah makes easy for him a path to Paradise. — Prophet Muhammad ﷺ (Sahih Muslim)",
+  "📖 The best among you are those who learn the Qur'an and teach it. — Prophet Muhammad ﷺ (Sahih al-Bukhari)",
+  "📖 Seeking knowledge is an obligation upon every Muslim. — Prophet Muhammad ﷺ (Sunan Ibn Majah)",
+  "📖 The angels lower their wings for the seeker of knowledge, pleased with what he seeks. — Prophet Muhammad ﷺ (Sunan Abi Dawud)",
+  "📖 The superiority of the scholar over the worshipper is like the superiority of the moon over the stars. — Prophet Muhammad ﷺ (Sunan Abi Dawud/Tirmidhi)",
+  "📖 Whoever Allah wishes good for, He grants him deep understanding of the religion. — Prophet Muhammad ﷺ (Sahih al-Bukhari & Muslim)",
+  "📖 Recite the Qur'an, for it will come as an intercessor for its companions on the Day of Judgment. — Prophet Muhammad ﷺ (Sahih Muslim)",
+  "📖 The one who is skilled in reciting the Qur'an is with the noble, obedient angels. — Prophet Muhammad ﷺ (Sahih al-Bukhari & Muslim)",
+  "📖 The one learning the Qur'an and acting upon it is like a bag of musk that perfumes all around it. — Prophet Muhammad ﷺ (Jami' at-Tirmidhi)",
+  "📖 Whoever reads a letter from the Book of Allah receives a good deed, multiplied ten times over. — Prophet Muhammad ﷺ (Jami' at-Tirmidhi)",
+];
+
+// Short paraphrases of the meaning (not a verbatim quote of any one copyrighted translation)
+// of Qur'an verses about knowledge and the Qur'an itself, each with its reference.
+const AYAH_PHRASES = [
+  "📗 \"Read! In the name of your Lord who created.\" — meaning of Qur'an, Al-'Alaq 96:1",
+  "📗 \"My Lord, increase me in knowledge.\" — meaning of Qur'an, Ta-Ha 20:114",
+  "📗 \"Are those who know equal to those who do not know?\" — meaning of Qur'an, Az-Zumar 39:9",
+  "📗 \"Allah will raise those who believe, and those given knowledge, in status.\" — meaning of Qur'an, Al-Mujadila 58:11",
+  "📗 \"It is only those with knowledge among His servants who truly stand in awe of Allah.\" — meaning of Qur'an, Fatir 35:28",
+  "📗 \"Such examples We give to people, but none grasp them except those of knowledge.\" — meaning of Qur'an, Al-'Ankabut 29:43",
+  "📗 \"The Most Merciful taught the Qur'an, created man, and taught him speech.\" — meaning of Qur'an, Ar-Rahman 55:1-4",
+  "📗 \"Taught man by the pen — taught man what he did not know.\" — meaning of Qur'an, Al-'Alaq 96:4-5",
+  "📗 \"A blessed Book We sent down, that they may reflect on its verses.\" — meaning of Qur'an, Sad 38:29",
+  "📗 \"Do they not reflect on the Qur'an, or are there locks upon their hearts?\" — meaning of Qur'an, Muhammad 47:24",
+];
+
+// Lines that gently encourage the student/family to tell others about the institute
+const REFERRAL_PHRASES = [
+  "🤝 Know someone who'd love to learn Qur'an and Arabic too? Share MY Institute with them!",
+  "📢 A good deed multiplies when shared — tell a friend or family member about your classes here!",
+  "🌍 Help someone else start their journey — invite a friend to join MY Institute!",
+  "💌 Ask us about our referral program if you'd like to invite a friend!",
+  "🤲 Sharing knowledge is a continuous charity — spread the word about your classes!",
+  "👨‍👩‍👧 Know a family member who wants to learn too? We'd love to welcome them at MY Institute!",
+  "🌟 The more people learn together, the more rewarding the journey — invite someone today!",
+  "📚 Your progress could inspire someone else to start learning — share your experience!",
+  "🕌 Help build a community of learners — invite a friend to join your class!",
+  "💬 Loved your session? Let a friend know about MY Institute!",
+];
+
+// Admin-added phrases loaded from Supabase (in addition to the built-in pools above).
+// Shape: { encourage:[...], hadith:[...], ayah:[...], referral:[...] }
+let customPhrases = { encourage:[], hadith:[], ayah:[], referral:[] };
+const loadCustomPhrases = async () => {
+  try {
+    const rows = await sbSelect('custom_phrases');
+    const grouped = { encourage:[], hadith:[], ayah:[], referral:[] };
+    (rows||[]).forEach(r => { if (grouped[r.category]) grouped[r.category].push({id:r.id, text:r.text}); });
+    customPhrases = grouped;
+  } catch(e) { /* table may not exist yet — non-fatal, built-ins still work */ }
+};
+const addCustomPhrase = async () => {
+  const category = document.getElementById('new-phrase-category').value;
+  const text = document.getElementById('new-phrase-text').value.trim();
+  if (!text) return notify('Write a phrase first', false);
+  try {
+    await sbFetch('custom_phrases', { method:'POST', body: JSON.stringify([{ id:uid(), category, text, created_at:new Date().toISOString() }]) });
+    document.getElementById('new-phrase-text').value='';
+    await loadCustomPhrases();
+    renderPhrasesPage();
+    notify('Phrase added ✓');
+  } catch(e) { notify('⚠️ Could not save (has the custom_phrases table been created?): '+e.message, false); }
+};
+const deleteCustomPhrase = async (id) => {
+  if (!confirm('Delete this phrase?')) return;
+  try {
+    await sbFetch(`custom_phrases?id=eq.${id}`, { method:'DELETE' });
+    await loadCustomPhrases();
+    renderPhrasesPage();
+  } catch(e) { notify('⚠️ Could not delete: '+e.message, false); }
+};
+const PHRASE_CATEGORY_LABEL = { encourage:'🌟 Encouragement', hadith:'📖 Hadith', ayah:'📗 Qur\'an Verse', referral:'🤝 Invite a Friend' };
+const renderPhrasesPage = () => {
+  const el = document.getElementById('phrases-list');
+  if (!el) return;
+  el.innerHTML = Object.keys(PHRASE_CATEGORY_LABEL).map(cat => {
+    const items = customPhrases[cat]||[];
+    return `<div class="card mb12">
+      <div class="bold f14 mb8">${PHRASE_CATEGORY_LABEL[cat]} <span class="muted f12">(${items.length} custom added)</span></div>
+      ${items.length ? items.map(p=>`<div class="flex justify-between items-center" style="padding:6px 0;border-top:1px solid var(--border)">
+        <div class="f13">${p.text}</div>
+        <button class="btn-danger" style="padding:3px 10px;font-size:11px" onclick="deleteCustomPhrase('${p.id}')">✕</button>
+      </div>`).join('') : `<div class="f12 muted">No custom phrases added yet — the built-in pool is still used.</div>`}
+    </div>`;
+  }).join('');
+};
+
+// Randomly picks ONE "second slot" line to follow the main encouragement — rotates between
+// a hadith, a Qur'an verse, or a friendly invite-a-friend line (built-in + any admin-added ones).
+const pickMessageAddon = () => {
+  const pools = [
+    { items: [...HADITH_PHRASES, ...customPhrases.hadith.map(p=>p.text)] },
+    { items: [...AYAH_PHRASES, ...customPhrases.ayah.map(p=>p.text)] },
+    { items: [...REFERRAL_PHRASES, ...customPhrases.referral.map(p=>p.text)] },
+  ].filter(p=>p.items.length);
+  if (!pools.length) return '';
+  const pool = pools[Math.floor(Math.random()*pools.length)];
+  return pool.items[Math.floor(Math.random()*pool.items.length)];
+};
+const pickEncouragement = () => {
+  const pool = [...ENCOURAGING_PHRASES, ...customPhrases.encourage.map(p=>p.text)];
+  return pool[Math.floor(Math.random()*pool.length)];
+};
 
 // Build a wa.me deep-link straight to a specific number's chat with the message pre-filled.
 // Strips spaces/dashes/plus signs and leading zeros; expects the number to include country code.
@@ -1013,7 +1288,8 @@ const whatsappMsg = async s => {
   const r=rem(s), t=teachers.find(t=>t.id===s.teacherId);
   const isDebt = r<0;
   const { homework, sideNote } = await getLatestHomework(s.id);
-  const encouragement = ENCOURAGING_PHRASES[Math.floor(Math.random()*ENCOURAGING_PHRASES.length)];
+  const encouragement = pickEncouragement();
+  const addon = pickMessageAddon();
 
   let lines = [
     `🌙 Dear ${s.name},`,
@@ -1025,6 +1301,7 @@ const whatsappMsg = async s => {
   if (sideNote) lines.push(`💬 Note: ${sideNote}`);
 
   lines.push('', encouragement);
+  if (addon) lines.push('', addon);
   lines.push('', `⏳ Hours Remaining: ${isDebt ? '0h ('+Math.abs(r)+'h overdue) 🔴' : r+'h ✅'}`);
 
   if (r<=0) {
@@ -1395,9 +1672,8 @@ const renderStudents=()=>{
         </div>
         <div class="flex gap8 items-center flex-wrap">
           <span class="badge ${badgeClass(r)}">${isDebt?'−'+Math.abs(r)+'h owed':r+'h remaining'}</span>
-          ${s.phone
-            ? `<button class="btn-green" onclick="sendWhatsappDirect('${s.id}')">📲 Send WhatsApp</button>`
-            : `<button class="btn-green" onclick="copyMsg('${s.id}')">📋 Message</button>`}
+          ${s.phone ? `<button class="btn-green" onclick="sendWhatsappDirect('${s.id}')">📲 Send WhatsApp</button>` : ''}
+          <button class="btn-ghost" onclick="copyMsg('${s.id}')">📋 Copy</button>
           <button class="btn-ghost" onclick="openEditStudent('${s.id}')">✏️ Edit</button>
           <button class="btn-danger" onclick="deleteStudent('${s.id}')">Remove</button>
         </div>
@@ -1761,7 +2037,8 @@ const loadAttendance = async (forceRefresh=false) => {
     const remaining = stu ? Math.max(0,(stu.hoursBought||0)-(stu.hoursUsed||0)) : null;
 
     // Build combined message: warm greeting + homework + an encouraging line + remaining hours
-    const encouragement = ENCOURAGING_PHRASES[Math.floor(Math.random()*ENCOURAGING_PHRASES.length)];
+    const encouragement = pickEncouragement();
+    const addon = pickMessageAddon();
     const combinedMsg = [
       `🌙 Dear ${stu?.name||r.student_name},`,
       '',
@@ -1771,6 +2048,8 @@ const loadAttendance = async (forceRefresh=false) => {
       sideNote ? `💬 Note: ${sideNote}` : '',
       '',
       encouragement,
+      addon ? '' : undefined,
+      addon || undefined,
       '',
       remaining !== null ? `⏳ Remaining hours: ${remaining}h ${remaining>0?'✅':'🔴'}` : '',
       remaining === 0 ? `🔔 Please renew your hours to continue sessions.` : '',
@@ -1800,15 +2079,16 @@ const loadAttendance = async (forceRefresh=false) => {
         ${sideNote ? `<div class="f12 muted mt4">💬 ${sideNote}</div>` : ''}
         ${remaining !== null ? `<div class="f12 mt4" style="color:${remaining<=1?'var(--red)':remaining<=3?'var(--gold)':'var(--green)'}">⏳ ${remaining}h remaining</div>` : ''}
         <textarea id="${msgId}_text" style="display:none">${combinedMsg}</textarea>
-        ${rowDirectLink
-          ? `<button onclick="window.open('${rowDirectLink}','_blank')"
-              style="margin-top:8px;padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--gold);border-radius:6px;cursor:pointer;color:var(--gold);font-weight:600">
+        <div class="flex gap8" style="margin-top:8px">
+          ${rowDirectLink ? `<button onclick="window.open('${rowDirectLink}','_blank')"
+              style="padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--gold);border-radius:6px;cursor:pointer;color:var(--gold);font-weight:600">
               📲 Send WhatsApp
-            </button>`
-          : `<button onclick="copyAttendanceMsg('${msgId}')"
-              style="margin-top:8px;padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--gold);border-radius:6px;cursor:pointer;color:var(--gold);font-weight:600">
-              📋 Copy Full Message
-            </button>`}
+            </button>` : ''}
+          <button onclick="copyAttendanceMsg('${msgId}')"
+            style="padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--muted);font-weight:600">
+            📋 Copy
+          </button>
+        </div>
       </div>` : ''}
     </div>`;
   };
@@ -2006,7 +2286,7 @@ const renderMySalary = () => {
 
 const renderAll=()=>{
   if (isAdmin()) {
-    renderDashboard(); renderTeachers(); renderStudents(); renderSalary(); renderSchedule(); renderHistory(); renderAuditLog(); loadAttendance(); loadReports();
+    renderDashboard(); renderTeachers(); renderStudents(); renderSalary(); renderSchedule(); renderHistory(); renderAuditLog(); loadAttendance(); loadReports(); renderPhrasesPage();
   } else if (isTeacherRole()) {
     renderMyStudents(); renderMySchedule(); renderMySalary(); renderMyReports(); checkReportReminder();
   }
@@ -2738,9 +3018,8 @@ const loadReports = async (forceRefresh=false) => {
         <div class="flex gap8 flex-wrap">
           <span class="badge badge-amber">Avg: ${avg}/10</span>
           <textarea id="${msgId}_text" style="display:none">${waLines}</textarea>
-          ${repDirectLink
-            ? `<button onclick="window.open('${repDirectLink}','_blank')" style="padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--gold);border-radius:6px;cursor:pointer;color:var(--gold)">📲 Send WhatsApp</button>`
-            : `<button onclick="copyAttendanceMsg('${msgId}')" style="padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--gold);border-radius:6px;cursor:pointer;color:var(--gold)">📋 Copy WhatsApp</button>`}
+          ${repDirectLink ? `<button onclick="window.open('${repDirectLink}','_blank')" style="padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--gold);border-radius:6px;cursor:pointer;color:var(--gold)">📲 Send WhatsApp</button>` : ''}
+          <button onclick="copyAttendanceMsg('${msgId}')" style="padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--muted)">📋 Copy</button>
         </div>
       </div>
 
@@ -2801,6 +3080,146 @@ const reviewReport = async (rid, status) => {
   } catch(e) { notify('⚠️ '+e.message, false); }
 };
 
+// ── Notifications / Reminders ─────────────────────────────────────────────────
+let notifsCache = null;
+
+const loadMyNotifs = async (forceRefresh=false) => {
+  const el = document.getElementById('mynotifs-list');
+  if (!el || !currentUser) return;
+  if (!notifsCache || forceRefresh) {
+    el.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">Loading…</div>';
+    try {
+      const tid = currentUser.teacherId;
+      const rows = await sbFetch(`notifications?or=(to_teacher_id.eq.${encodeURIComponent(tid)},to_teacher_id.eq.all)&order=created_at.desc&select=*`);
+      notifsCache = rows || [];
+    } catch(e) {
+      el.innerHTML = `<div class="card" style="text-align:center;padding:40px;color:var(--red)">⚠️ ${e.message}<br><small>Make sure the notifications table exists in Supabase.</small></div>`;
+      return;
+    }
+  }
+  updateNotifBadge();
+  if (!notifsCache.length) {
+    el.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">No reminders yet.</div>';
+    return;
+  }
+  el.innerHTML = notifsCache.map(n => {
+    const d = new Date(n.created_at);
+    const when = isNaN(d) ? n.created_at : d.toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    const isDone = !!n.read_at;
+    return `<div class="card mb12" style="border-left:3px solid ${isDone?'var(--border)':'var(--gold)'}">
+      <div class="flex justify-between items-center flex-wrap gap8 mb8">
+        <div class="flex items-center gap8">
+          ${isDone
+            ? '<span class="badge badge-green">✅ Done</span>'
+            : '<span class="badge badge-amber">🔔 New</span>'}
+          <span class="f12 muted">${when}</span>
+          <span class="f12 muted">from ${n.from_name}</span>
+        </div>
+        ${!isDone ? `<button class="btn-green" style="padding:5px 14px;font-size:12px" onclick="markNotifDone('${n.id}')">✅ Done</button>` : ''}
+      </div>
+      <div class="f14" style="line-height:1.6">${n.message.replace(/\n/g,'<br>')}</div>
+    </div>`;
+  }).join('');
+};
+
+const markNotifDone = async (nid) => {
+  try {
+    await sbFetch(`notifications?id=eq.${nid}`, {
+      method: 'PATCH',
+      headers: { 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ read_at: new Date().toISOString() })
+    });
+    notifsCache = null;
+    await loadMyNotifs(true);
+    notify('✅ Marked as done');
+  } catch(e) { notify('⚠️ ' + e.message, false); }
+};
+
+const updateNotifBadge = () => {
+  const badge = document.getElementById('notif-badge');
+  if (!badge || !notifsCache) return;
+  const unread = notifsCache.filter(n => !n.read_at).length;
+  badge.textContent = unread;
+  badge.style.display = unread > 0 ? '' : 'none';
+};
+
+const refreshNotifBadge = async () => {
+  if (!isTeacherRole() || !currentUser?.teacherId) return;
+  try {
+    const tid = currentUser.teacherId;
+    const rows = await sbFetch(`notifications?or=(to_teacher_id.eq.${encodeURIComponent(tid)},to_teacher_id.eq.all)&read_at=is.null&select=id`);
+    const badge = document.getElementById('notif-badge');
+    if (!badge) return;
+    const n = (rows||[]).length;
+    badge.textContent = n;
+    badge.style.display = n > 0 ? '' : 'none';
+  } catch(e) { /* non-fatal */ }
+};
+
+// Admin: send reminder
+const sendNotification = async () => {
+  const toTeacher = document.getElementById('notif-to-teacher').value;
+  const message = document.getElementById('notif-message').value.trim();
+  if (!message) return notify('Write a message first', false);
+  try {
+    await sbFetch('notifications', {
+      method: 'POST',
+      body: JSON.stringify([{
+        id: uid(),
+        from_name: currentUser.displayName,
+        to_teacher_id: toTeacher,
+        message,
+        created_at: new Date().toISOString(),
+        read_at: null
+      }])
+    });
+    document.getElementById('notif-message').value = '';
+    notify('✅ Reminder sent');
+    logAction('Sent reminder', `To: ${toTeacher === 'all' ? 'All Teachers' : toTeacher}`);
+    loadSentNotifs(true);
+  } catch(e) { notify('⚠️ ' + e.message, false); }
+};
+
+const loadSentNotifs = async (forceRefresh=false) => {
+  const el = document.getElementById('sent-notifs-list');
+  if (!el) return;
+  el.innerHTML = '<div class="muted f13" style="padding:8px 0">Loading…</div>';
+  try {
+    const rows = await sbFetch('notifications?order=created_at.desc&select=*&limit=100');
+    if (!rows || !rows.length) { el.innerHTML = '<div class="card muted" style="text-align:center;padding:30px">No reminders sent yet.</div>'; return; }
+    el.innerHTML = rows.map(n => {
+      const d = new Date(n.created_at);
+      const when = isNaN(d) ? n.created_at : d.toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+      const toLabel = n.to_teacher_id === 'all' ? '📢 All Teachers' : (teachers.find(t=>t.id===n.to_teacher_id)?.name || n.to_teacher_id);
+      const isDone = !!n.read_at;
+      const readWhen = isDone ? new Date(n.read_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : null;
+      return `<div class="card mb10" style="border-left:3px solid ${isDone?'var(--green-border)':'var(--gold)'}">
+        <div class="flex justify-between items-center flex-wrap gap8 mb6">
+          <div class="flex items-center gap8 flex-wrap">
+            <span class="badge ${isDone?'badge-green':'badge-amber'}">${isDone?'✅ Seen':'⏳ Unread'}</span>
+            <span class="f12 muted">→ ${toLabel}</span>
+            <span class="f12 muted">${when}</span>
+          </div>
+          <div class="flex gap8 items-center">
+            ${isDone ? `<span class="f12 green">✅ Done at ${readWhen}</span>` : ''}
+            <button class="btn-danger" style="padding:3px 10px;font-size:11px" onclick="deleteNotification('${n.id}')">🗑 Delete</button>
+          </div>
+        </div>
+        <div class="f13" style="line-height:1.6">${n.message.replace(/\n/g,'<br>')}</div>
+      </div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = `<div class="card muted" style="text-align:center;padding:30px">⚠️ ${e.message}</div>`; }
+};
+
+const deleteNotification = async (nid) => {
+  if (!confirm('Delete this reminder?')) return;
+  try {
+    await sbFetch(`notifications?id=eq.${nid}`, { method: 'DELETE' });
+    notify('Reminder deleted');
+    loadSentNotifs(true);
+  } catch(e) { notify('⚠️ ' + e.message, false); }
+};
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.getElementById('today-date').textContent=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 
@@ -2841,6 +3260,7 @@ const init = async () => {
   try {
     document.getElementById('loading-state').style.display = '';
     await loadAllData();
+    await loadCustomPhrases();
     if (isAdmin()) await checkMonthlyReset();
     document.getElementById('loading-state').style.display = 'none';
     renderAll();
