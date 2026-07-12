@@ -661,6 +661,37 @@ button:hover{opacity:.85}
   </div>
 </div>
 
+<!-- ABSENCE MODAL -->
+<div id="absence-overlay" onclick="closeAbsenceModal()" class="overlay-base">
+  <div onclick="event.stopPropagation()" class="modal-base" style="width:400px">
+    <div class="f15 bold red mb4">❌ Log Absence</div>
+    <div class="f13 bold mb16" id="absence-student-name-display"></div>
+    <input type="hidden" id="absence-sid"/>
+    <div class="form-group">
+      <label class="label">Hours to deduct *</label>
+      <select id="absence-hours">
+        <option value="0.5">0.5h — 30 min</option>
+        <option value="1" selected>1h — 60 min</option>
+        <option value="1.5">1.5h — 90 min</option>
+        <option value="2">2h — 120 min</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="label">Motivational message style</label>
+      <select id="absence-msg-style">
+        <option value="encourage">Encouraging 💪</option>
+        <option value="remind">Gentle reminder 🌟</option>
+        <option value="missing">We miss you 🌙</option>
+      </select>
+    </div>
+    <div id="absence-error" class="f12 red mb8" style="display:none"></div>
+    <div class="flex gap8 mt8">
+      <button class="btn-danger flex1" onclick="submitAbsence()">❌ Log Absence</button>
+      <button class="btn-ghost" onclick="closeAbsenceModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 </div><!-- /app-shell -->
 
 <!-- ATTENDANCE LOG MODAL - outside app-shell to avoid display:none blocking -->
@@ -2033,14 +2064,45 @@ const loadAttendance = async (forceRefresh=false) => {
   const renderRow = (r, showCancel=false) => {
     const d = new Date(r.logged_at);
     const when = isNaN(d) ? r.logged_at : d.toLocaleString('en-GB', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+
+    const isAbsent = (r.note||'').startsWith('❌ ABSENT |');
+    const stu = students.find(s=>s.id===r.student_id);
+    const remaining = stu ? Math.max(0,(stu.hoursBought||0)-(stu.hoursUsed||0)) : null;
+    const msgId = 'msg_' + r.id;
+
+    if (isAbsent) {
+      const absMsg = (r.note||'').replace('❌ ABSENT | ','');
+      const fullAbsMsg = `${absMsg}\n\n⏳ Remaining hours: ${remaining !== null ? remaining+'h' : '?'}`;
+      return `<div class="salary-row" style="flex-direction:column;align-items:flex-start;gap:8px;padding:14px 0">
+        <div class="flex justify-between items-center" style="width:100%">
+          <div>
+            <span class="bold f14">${r.student_name}</span>
+            <span class="badge badge-red f12" style="margin-left:8px">❌ Absent</span>
+            <span class="badge badge-blue f12" style="margin-left:4px">${r.teacher_name}</span>
+            ${!r.seen_by_admin ? `<span class="badge badge-red f12" style="margin-left:4px">New</span>` : ''}
+          </div>
+          <div class="flex gap8 items-center">
+            <span class="f12 muted">${when}</span>
+            ${showCancel ? `<button class="btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteAttendance('${r.id}','${r.student_id}',${r.hours})">✕ Cancel</button>` : ''}
+          </div>
+        </div>
+        <div style="background:#1a0808;border-left:3px solid var(--red);padding:8px 12px;border-radius:6px;width:100%;box-sizing:border-box">
+          <div class="f12 muted mb4">💬 Motivational Message</div>
+          <div class="f13">${absMsg}</div>
+          ${remaining !== null ? `<div class="f12 mt4" style="color:${remaining<=1?'var(--red)':remaining<=3?'var(--gold)':'var(--green)'}">⏳ ${remaining}h remaining</div>` : ''}
+          <textarea id="${msgId}_text" style="display:none">${fullAbsMsg}</textarea>
+          <button onclick="copyAttendanceMsg('${msgId}')"
+            style="margin-top:8px;padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--red);border-radius:6px;cursor:pointer;color:var(--red);font-weight:600">
+            📋 Copy Absence Message
+          </button>
+        </div>
+      </div>`;
+    }
+
     // Split homework from note
     const noteParts = (r.note||'').split(' | Note: ');
     const homework = noteParts[0];
     const sideNote = noteParts[1]||'';
-
-    // Get remaining hours for this student
-    const stu = students.find(s=>s.id===r.student_id);
-    const remaining = stu ? Math.max(0,(stu.hoursBought||0)-(stu.hoursUsed||0)) : null;
 
     // Build combined message: warm greeting + homework + an encouraging line + remaining hours
     const encouragement = pickEncouragement();
@@ -2063,7 +2125,6 @@ const loadAttendance = async (forceRefresh=false) => {
       '💛 Best regards,', `${INSTITUTE_NAME} 🌟`,
     ].filter(l=>l!==undefined).join('\n');
 
-    const msgId = 'msg_' + r.id;
     const rowDirectLink = waDirectLink(stu?.phone, combinedMsg);
     return `<div class="salary-row" style="flex-direction:column;align-items:flex-start;gap:8px;padding:14px 0">
       <div class="flex justify-between items-center" style="width:100%">
@@ -2242,8 +2303,14 @@ const renderMyStudents = async () => {
           <div class="f12 muted mt4">${s.hoursUsed||0}h used this month</div>
         </div>
         ${doneToday
-          ? `<button class="btn-ghost" style="padding:6px 14px;font-size:12px;opacity:0.5;cursor:not-allowed" disabled>✅ Done</button>`
-          : `<button class="btn-green" style="padding:6px 14px;font-size:12px" onclick="openAttendanceModal('${s.id}','${s.name.replace(/'/g,"\\'")}')">✅ Log Attendance</button>`
+          ? `<div class="flex gap8">
+               <button class="btn-ghost" style="padding:6px 14px;font-size:12px;opacity:0.5;cursor:not-allowed" disabled>✅ Done</button>
+               <button class="btn-danger" style="padding:6px 14px;font-size:12px" onclick="openAbsenceModal('${s.id}','${s.name.replace(/'/g,"\\'")}')">❌ Absent</button>
+             </div>`
+          : `<div class="flex gap8">
+               <button class="btn-green" style="padding:6px 14px;font-size:12px" onclick="openAttendanceModal('${s.id}','${s.name.replace(/'/g,"\\'")}')">✅ Log Attendance</button>
+               <button class="btn-danger" style="padding:6px 14px;font-size:12px" onclick="openAbsenceModal('${s.id}','${s.name.replace(/'/g,"\\'")}')">❌ Absent</button>
+             </div>`
         }
       </div>
     </div>`;
@@ -3233,7 +3300,99 @@ const deleteNotification = async (nid) => {
   } catch(e) { notify('⚠️ ' + e.message, false); }
 };
 
-// ── Init ──────────────────────────────────────────────────────────────────────
+// ── Absence ────────────────────────────────────────────────────────────────────
+const ABSENCE_MESSAGES = {
+  encourage: [
+    "We missed you today! 💪 Remember, every session brings you closer to your goals. See you next time!",
+    "You were missed in today's session! 🌟 Keep going — consistency is the key to success. See you soon!",
+    "We hope you're well! 💫 Don't let one missed class slow you down. We look forward to seeing you next time!"
+  ],
+  remind: [
+    "A gentle reminder that you missed today's session 🌟 Regular attendance helps you progress faster. We look forward to seeing you!",
+    "You missed today's class 📚 Remember, every lesson counts! We hope to see you at the next session.",
+    "Today's session was missed 🌙 Staying consistent with your studies will help you achieve great results. See you next time!"
+  ],
+  missing: [
+    "We missed you today! 🌙 Your presence makes our sessions special. We can't wait to see you back!",
+    "The class wasn't the same without you today 💛 We miss your participation! See you very soon.",
+    "We missed having you with us today 🌟 You're an important part of our learning community. See you next time!"
+  ]
+};
+
+const openAbsenceModal = (sid, name) => {
+  document.getElementById('absence-sid').value = sid;
+  document.getElementById('absence-student-name-display').textContent = '👤 ' + name;
+  document.getElementById('absence-hours').value = '1';
+  document.getElementById('absence-msg-style').value = 'encourage';
+  document.getElementById('absence-error').style.display = 'none';
+  document.getElementById('absence-overlay').classList.add('open');
+};
+const closeAbsenceModal = () => document.getElementById('absence-overlay').classList.remove('open');
+
+const submitAbsence = async () => {
+  const sid = document.getElementById('absence-sid').value;
+  const hours = parseFloat(document.getElementById('absence-hours').value);
+  const style = document.getElementById('absence-msg-style').value;
+  const errEl = document.getElementById('absence-error');
+  errEl.style.display = 'none';
+
+  const stu = students.find(s => s.id === sid);
+  if (!stu) return;
+
+  // Pick random motivational message
+  const msgs = ABSENCE_MESSAGES[style] || ABSENCE_MESSAGES.encourage;
+  const msg = msgs[Math.floor(Math.random()*msgs.length)];
+
+  // Deduct hours
+  const newHoursUsed = (stu.hoursUsed||0) + hours;
+  students = students.map(s => s.id === sid ? {...s, hoursUsed: newHoursUsed} : s);
+
+  try {
+    // Update hours in DB
+    await sbFetch(`students?id=eq.${sid}`, {
+      method: 'PATCH',
+      headers: { 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ hours_used: newHoursUsed })
+    });
+
+    // Log in attendance_log as absence
+    await sbFetch('attendance_log', {
+      method: 'POST',
+      body: JSON.stringify([{
+        id: uid(),
+        student_id: sid,
+        student_name: stu.name,
+        teacher_id: currentUser.teacherId || null,
+        teacher_name: currentUser.displayName,
+        hours: hours,
+        note: `❌ ABSENT | ${msg}`,
+        logged_at: new Date().toISOString(),
+        seen_by_admin: isAdmin() ? true : false
+      }])
+    });
+    attendanceCache = null;
+    logAction('Logged absence', `${stu.name}: -${hours}h`);
+  } catch(e) {
+    students = students.map(s => s.id === sid ? {...s, hoursUsed: (s.hoursUsed||0) - hours} : s);
+    errEl.textContent = '⚠️ Could not save: ' + e.message;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  closeAbsenceModal();
+  notify(`❌ Absence logged for ${stu.name} (-${hours}h)`);
+
+  // Show copyable message
+  const copyId = 'abs_' + sid + '_' + Date.now();
+  const remaining = Math.max(0,(stu.hoursBought||0)-newHoursUsed);
+  const fullMsg = `${msg}\n\n⏳ Remaining hours: ${remaining}h`;
+  notify(`❌ Absence logged — message ready to copy`, false);
+
+  // Store for copy button (show in attendance page)
+  attendanceCache = null;
+  renderAll();
+  if (isAdmin()) { loadAttendance(true); showPage('attendance'); }
+};
 document.getElementById('today-date').textContent=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 
 const loadAllData = async () => {
