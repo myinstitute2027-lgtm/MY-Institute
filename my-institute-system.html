@@ -1719,6 +1719,7 @@ const renderStudents=()=>{
         <span class="f12 muted" style="margin-left:8px">Buy hours:</span>
         <input id="buy-${s.id}" type="number" min="1" step="1" placeholder="4" class="small-input"/>
         <button class="btn-green" onclick="topUpHours('${s.id}')">+ Top Up</button>
+        <button class="btn-danger" style="margin-left:8px" onclick="openAbsenceModal('${s.id}','${s.name.replace(/'/g,"\\'")}')">❌ Absent</button>
       </div>
     </div>`;
   };
