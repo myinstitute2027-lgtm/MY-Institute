@@ -647,7 +647,7 @@ button:hover{opacity:.85}
       <input id="grade-exam" type="number" min="0" max="10" step="0.5" placeholder="0-10"/>
     </div>
 
-    <!-- Teacher comment (free text, not a grade) -->
+    <!-- Teacher comment -->
     <div class="form-group">
       <label class="label">Teacher's Comment</label>
       <textarea id="report-comment" placeholder="Write your comments about the student's progress this month..." style="min-height:90px;resize:vertical"></textarea>
@@ -1957,13 +1957,19 @@ const submitAttendance = async () => {
     }
   } catch(e) { /* non-fatal */ }
 
-  // Log hours (kept in a local var so we can roll back cleanly if saving fails)
-  const previousStudents = students;
+  // Update local state first
   students = students.map(s => s.id === sid ? {...s, hoursUsed: (s.hoursUsed||0) + hours} : s);
-  const saved = await persist();
-  if (!saved) {
-    // Roll back the local change — nothing was actually saved, so don't pretend it was.
-    students = previousStudents;
+  const updatedStu = students.find(s => s.id === sid);
+
+  // Patch only this student's hours in DB directly
+  try {
+    await sbFetch(`students?id=eq.${sid}`, {
+      method: 'PATCH',
+      headers: { 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ hours_used: updatedStu.hoursUsed })
+    });
+  } catch(e) {
+    students = students.map(s => s.id === sid ? {...s, hoursUsed: (s.hoursUsed||0) - hours} : s);
     errEl.textContent = '⚠️ Could not save the hours to the database. Please try again.';
     errEl.style.display = 'block';
     return;
@@ -2132,7 +2138,14 @@ const deleteAttendance = async (aid, sid, hours) => {
   try {
     await sbFetch(`attendance_log?id=eq.${aid}`, { method: 'DELETE' });
     students = students.map(s => s.id === sid ? {...s, hoursUsed: Math.max(0,(s.hoursUsed||0)-hours)} : s);
-    await persist();
+    const updatedStu = students.find(s => s.id === sid);
+    if (updatedStu) {
+      await sbFetch(`students?id=eq.${sid}`, {
+        method: 'PATCH',
+        headers: { 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ hours_used: updatedStu.hoursUsed })
+      });
+    }
     attendanceCache = null;
     notify('↩️ Attendance cancelled and hours reversed', true);
     renderAll();
