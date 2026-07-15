@@ -129,6 +129,7 @@ button:hover{opacity:.85}
   <button class="nav-btn" id="nav-schedule" onclick="showPage('schedule')">📅 Schedules</button>
   <button class="nav-btn" id="nav-history" onclick="showPage('history')">🗂️ History</button>
   <button class="nav-btn" id="nav-auditlog" onclick="showPage('auditlog')">📋 Activity Log</button>
+  <button class="nav-btn" id="nav-backup" onclick="showPage('backup')">💾 Backup</button>
   <button class="nav-btn" id="nav-attendance" onclick="showPage('attendance')">✅ Attendance</button>
   <button class="nav-btn" id="nav-reports" onclick="showPage('reports')">📝 Reports</button>
   <button class="nav-btn" id="nav-phrases" onclick="showPage('phrases')">💬 Message Phrases</button>
@@ -300,6 +301,19 @@ button:hover{opacity:.85}
       </div>
     </div>
     <div id="auditlog-content"></div>
+  </div>
+
+  <!-- BACKUP (admin only) -->
+  <div class="page" id="page-backup">
+    <div class="f18 bold mb16">💾 Backup</div>
+    <div class="card" style="max-width:560px">
+      <div class="f14 mb12">Download a full copy of all your data (teachers, students, schedules, attendance, reports, notifications...) as one JSON file. Keep it somewhere safe — you can send it to yourself on WhatsApp/email or save it to your computer.</div>
+      <button class="btn-gold" onclick="downloadBackup()">⬇️ Download Backup Now</button>
+      <div id="backup-status" class="f12 muted mt8"></div>
+      <div class="f12 muted" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+        Tip: Do this regularly (e.g. once a week), and especially before making big changes.
+      </div>
+    </div>
   </div>
 
   <!-- ATTENDANCE LOG (admin view) -->
@@ -865,7 +879,7 @@ const doLogout = () => {
 
 // Apply role-based visibility of nav items and pages
 const applyRoleUI = () => {
-  const adminNav = ['nav-dashboard','nav-teachers','nav-students','nav-salary','nav-schedule','nav-history','nav-auditlog','nav-attendance','nav-reports','nav-phrases','nav-sendnotifs'];
+  const adminNav = ['nav-dashboard','nav-teachers','nav-students','nav-salary','nav-schedule','nav-history','nav-auditlog','nav-backup','nav-attendance','nav-reports','nav-phrases','nav-sendnotifs'];
   const teacherNav = ['nav-mystudents','nav-myschedule','nav-mysalary','nav-myreports','nav-mynotifs'];
   if (isAdmin()) {
     adminNav.forEach(id=>document.getElementById(id).style.display='');
@@ -887,6 +901,40 @@ const afterLogin = async () => {
   if (isTeacherRole()) refreshNotifBadge();
   // showPage re-renders with loaded data
   showPage(isAdmin() ? 'dashboard' : 'mystudents');
+};
+
+// ── Backup ────────────────────────────────────────────────────────────────────
+const BACKUP_TABLES = ['teachers','students','schedules','history','attendance_log','monthly_reports','notifications','audit_log','settings','custom_phrases'];
+
+const downloadBackup = async () => {
+  const statusEl = document.getElementById('backup-status');
+  if (statusEl) statusEl.textContent = 'Preparing backup...';
+  try {
+    const entries = await Promise.all(
+      BACKUP_TABLES.map(async table => [table, await sbSelect(table)])
+    );
+    const data = Object.fromEntries(entries);
+    const backup = {
+      exported_at: new Date().toISOString(),
+      source: 'MY Institute System',
+      data
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = `institute-backup-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    if (statusEl) statusEl.textContent = `✅ Backup downloaded (${new Date().toLocaleString()})`;
+    logAction('Backup', 'Downloaded a full data backup');
+  } catch (e) {
+    if (statusEl) statusEl.textContent = '⚠️ Backup failed: ' + e.message;
+    notify('⚠️ Backup failed: ' + e.message, false);
+  }
 };
 
 // ── Audit Log ─────────────────────────────────────────────────────────────────
@@ -1025,7 +1073,7 @@ const notify = (msg, ok=true) => {
 };
 
 // ── Navigation ────────────────────────────────────────────────────────────────
-const ADMIN_ONLY_PAGES = ['dashboard','teachers','students','salary','schedule','history','auditlog','attendance','reports','addTeacher','addStudent','phrases','sendnotifs'];
+const ADMIN_ONLY_PAGES = ['dashboard','teachers','students','salary','schedule','history','auditlog','backup','attendance','reports','addTeacher','addStudent','phrases','sendnotifs'];
 const TEACHER_ONLY_PAGES = ['mystudents','myschedule','mysalary','mynotifs'];
 
 const showPage = async id => {
@@ -2841,7 +2889,8 @@ const renderTeacherScheduleView = () => {
 
     // build day-grouped view
     const byDay = DAYS.map(day=>{
-      const daySess = tSchedules.filter(({pkg})=>pkg.days.find(d=>d.day===day));
+      const daySess = tSchedules.filter(({pkg})=>pkg.days.find(d=>d.day===day))
+        .sort((a,b)=>timeToMins(a.pkg.days.find(d=>d.day===day).start)-timeToMins(b.pkg.days.find(d=>d.day===day).start));
       if (!daySess.length) return '';
       return daySess.map(({stu,pkg})=>{
         const d = pkg.days.find(d=>d.day===day);
