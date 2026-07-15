@@ -2374,7 +2374,8 @@ const renderMySchedule = () => {
   if (!mySchedules.length) { el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">No sessions scheduled yet.</div>'; return; }
 
   const byDay = DAYS.map(day=>{
-    const daySess = mySchedules.filter(({pkg})=>pkg.days.find(d=>d.day===day));
+    const daySess = mySchedules.filter(({pkg})=>pkg.days.find(d=>d.day===day))
+      .sort((a,b)=>timeToMins(a.pkg.days.find(d=>d.day===day).start)-timeToMins(b.pkg.days.find(d=>d.day===day).start));
     if (!daySess.length) return '';
     const sessHtml = daySess
       .map(({stu,pkg})=>{
