@@ -132,6 +132,7 @@ button:hover{opacity:.85}
   <button class="nav-btn" id="nav-backup" onclick="showPage('backup')">💾 Backup</button>
   <button class="nav-btn" id="nav-attendance" onclick="showPage('attendance')">✅ Attendance</button>
   <button class="nav-btn" id="nav-reports" onclick="showPage('reports')">📝 Reports</button>
+  <button class="nav-btn" id="nav-accounts" onclick="showPage('accounts')">👥 Accounts</button>
   <button class="nav-btn" id="nav-phrases" onclick="showPage('phrases')">💬 Message Phrases</button>
   <button class="nav-btn" id="nav-myreports" onclick="showPage('myreports')" style="display:none">📝 My Reports</button>
   <button class="nav-btn" id="nav-mystudents" onclick="showPage('mystudents')" style="display:none">📚 My Students</button>
@@ -336,6 +337,15 @@ button:hover{opacity:.85}
     <div class="f18 bold mb16">My Schedule</div>
     <div id="trial-alert"></div>
     <div id="myschedule-list"></div>
+  </div>
+
+  <!-- ACCOUNTS (admin only) -->
+  <div class="page" id="page-accounts">
+    <div class="flex justify-between items-center mb16 flex-wrap gap8">
+      <div class="f18 bold">👥 Teacher Accounts</div>
+      <button class="btn-gold" onclick="openNewAccount()">➕ Add Account</button>
+    </div>
+    <div id="accounts-list"></div>
   </div>
 
   <!-- REPORTS (admin view) -->
@@ -675,6 +685,33 @@ button:hover{opacity:.85}
   </div>
 </div>
 
+<!-- ACCOUNT MODAL -->
+<div id="account-overlay" onclick="closeAccountModal()" class="overlay-base">
+  <div onclick="event.stopPropagation()" class="modal-base" style="width:420px">
+    <div class="f15 bold gold mb4" id="account-modal-title">➕ Add Teacher Account</div>
+    <input type="hidden" id="account-id"/>
+    <div class="form-group">
+      <label class="label">Teacher *</label>
+      <select id="account-teacher">
+        <option value="">Select teacher...</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="label">Username *</label>
+      <input id="account-username" placeholder="e.g. abla"/>
+    </div>
+    <div class="form-group">
+      <label class="label">Password *</label>
+      <input id="account-password" placeholder="e.g. Pass123"/>
+    </div>
+    <div id="account-error" class="f12 red mb8" style="display:none"></div>
+    <div class="flex gap8 mt8">
+      <button class="btn-gold flex1" onclick="saveAccount()">💾 Save</button>
+      <button class="btn-ghost" onclick="closeAccountModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- ABSENCE MODAL -->
 <div id="absence-overlay" onclick="closeAbsenceModal()" class="overlay-base">
   <div onclick="event.stopPropagation()" class="modal-base" style="width:400px">
@@ -879,7 +916,7 @@ const doLogout = () => {
 
 // Apply role-based visibility of nav items and pages
 const applyRoleUI = () => {
-  const adminNav = ['nav-dashboard','nav-teachers','nav-students','nav-salary','nav-schedule','nav-history','nav-auditlog','nav-backup','nav-attendance','nav-reports','nav-phrases','nav-sendnotifs'];
+  const adminNav = ['nav-dashboard','nav-teachers','nav-students','nav-salary','nav-schedule','nav-history','nav-auditlog','nav-backup','nav-attendance','nav-reports','nav-phrases','nav-sendnotifs','nav-accounts'];
   const teacherNav = ['nav-mystudents','nav-myschedule','nav-mysalary','nav-myreports','nav-mynotifs'];
   if (isAdmin()) {
     adminNav.forEach(id=>document.getElementById(id).style.display='');
@@ -1073,7 +1110,7 @@ const notify = (msg, ok=true) => {
 };
 
 // ── Navigation ────────────────────────────────────────────────────────────────
-const ADMIN_ONLY_PAGES = ['dashboard','teachers','students','salary','schedule','history','auditlog','backup','attendance','reports','addTeacher','addStudent','phrases','sendnotifs'];
+const ADMIN_ONLY_PAGES = ['dashboard','teachers','students','salary','schedule','history','auditlog','backup','attendance','reports','accounts','addTeacher','addStudent','phrases','sendnotifs'];
 const TEACHER_ONLY_PAGES = ['mystudents','myschedule','mysalary','mynotifs'];
 
 const showPage = async id => {
@@ -2416,7 +2453,7 @@ const renderMySalary = () => {
 
 const renderAll=()=>{
   if (isAdmin()) {
-    renderDashboard(); renderTeachers(); renderStudents(); renderSalary(); renderSchedule(); renderHistory(); renderAuditLog(); loadAttendance(); loadReports(); renderPhrasesPage();
+    renderDashboard(); renderTeachers(); renderStudents(); renderSalary(); renderSchedule(); renderHistory(); renderAuditLog(); loadAttendance(); loadReports(); renderPhrasesPage(); loadAccounts();
   } else if (isTeacherRole()) {
     renderMyStudents(); renderMySchedule(); renderMySalary(); renderMyReports(); checkReportReminder();
   }
@@ -3349,6 +3386,141 @@ const deleteNotification = async (nid) => {
     notify('Reminder deleted');
     loadSentNotifs(true);
   } catch(e) { notify('⚠️ ' + e.message, false); }
+};
+
+// ── Accounts Management ────────────────────────────────────────────────────────
+let allUsers = [];
+
+const loadAccounts = async (forceRefresh=false) => {
+  const el = document.getElementById('accounts-list');
+  if (!el) return;
+  try {
+    const rows = await sbFetch('users?order=display_name.asc&select=*');
+    allUsers = (rows||[]).map(userFromDb);
+  } catch(e) { el.innerHTML=`<div class="card muted" style="text-align:center;padding:40px">⚠️ ${e.message}</div>`; return; }
+
+  if (!allUsers.length) { el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">No accounts yet.</div>'; return; }
+
+  el.innerHTML = allUsers.map(u=>{
+    const t = teachers.find(t=>t.id===u.teacherId);
+    const roleBadge = u.role==='admin'
+      ? '<span class="badge badge-amber">Admin</span>'
+      : '<span class="badge badge-blue">Teacher</span>';
+    return `<div class="card mb12">
+      <div class="flex justify-between items-center flex-wrap gap8">
+        <div>
+          <span class="bold f14">${u.displayName}</span>
+          ${roleBadge}
+          <div class="f12 muted mt4">Username: <span class="mono">${u.username}</span>${t?' · '+t.name:''}</div>
+        </div>
+        <div class="flex gap8">
+          ${u.role!=='admin'?`<button class="btn-ghost" onclick="openEditAccount('${u.id}')">✏️ Edit</button>`:''}
+          ${u.role!=='admin'?`<button class="btn-danger" onclick="deleteAccount('${u.id}','${u.displayName}')">Remove</button>`:''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+};
+
+const openNewAccount = () => {
+  document.getElementById('account-id').value = '';
+  document.getElementById('account-modal-title').textContent = '➕ Add Teacher Account';
+  document.getElementById('account-username').value = '';
+  document.getElementById('account-password').value = '';
+  document.getElementById('account-error').style.display = 'none';
+  // Populate teachers dropdown — only teachers without an account
+  const usedTeacherIds = new Set(allUsers.filter(u=>u.teacherId).map(u=>u.teacherId));
+  const available = teachers.filter(t=>!usedTeacherIds.has(t.id)).sort((a,b)=>a.name.localeCompare(b.name));
+  document.getElementById('account-teacher').innerHTML =
+    '<option value="">Select teacher...</option>' +
+    available.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+  document.getElementById('account-overlay').classList.add('open');
+};
+
+const openEditAccount = (uid) => {
+  const u = allUsers.find(u=>u.id===uid);
+  if (!u) return;
+  document.getElementById('account-id').value = u.id;
+  document.getElementById('account-modal-title').textContent = '✏️ Edit Account — ' + u.displayName;
+  document.getElementById('account-username').value = u.username;
+  document.getElementById('account-password').value = u.password;
+  document.getElementById('account-error').style.display = 'none';
+  // Show current teacher selected
+  const t = teachers.find(t=>t.id===u.teacherId);
+  const usedTeacherIds = new Set(allUsers.filter(x=>x.teacherId && x.id!==uid).map(x=>x.teacherId));
+  const available = teachers.filter(t=>!usedTeacherIds.has(t.id)).sort((a,b)=>a.name.localeCompare(b.name));
+  document.getElementById('account-teacher').innerHTML =
+    '<option value="">Select teacher...</option>' +
+    available.map(t2=>`<option value="${t2.id}"${t2.id===u.teacherId?' selected':''}>${t2.name}</option>`).join('');
+  document.getElementById('account-overlay').classList.add('open');
+};
+
+const closeAccountModal = () => document.getElementById('account-overlay').classList.remove('open');
+
+const saveAccount = async () => {
+  const existingId = document.getElementById('account-id').value;
+  const teacherId = document.getElementById('account-teacher').value;
+  const username = document.getElementById('account-username').value.trim();
+  const password = document.getElementById('account-password').value.trim();
+  const errEl = document.getElementById('account-error');
+  errEl.style.display = 'none';
+
+  if (!teacherId) { errEl.textContent='Select a teacher'; errEl.style.display='block'; return; }
+  if (!username) { errEl.textContent='Enter a username'; errEl.style.display='block'; return; }
+  if (!password) { errEl.textContent='Enter a password'; errEl.style.display='block'; return; }
+
+  const teacher = teachers.find(t=>t.id===teacherId);
+  if (!teacher) return;
+
+  try {
+    if (existingId) {
+      // Update existing account
+      await sbFetch(`users?id=eq.${existingId}`, {
+        method: 'PATCH',
+        headers: {'Prefer':'return=minimal'},
+        body: JSON.stringify({ username, password, teacher_id: teacherId, display_name: teacher.name })
+      });
+      notify(`✅ Account updated for ${teacher.name}`);
+      logAction('Updated account', teacher.name);
+    } else {
+      // Create new account
+      await sbFetch('users', {
+        method: 'POST',
+        body: JSON.stringify([{
+          id: 'u_' + uid(),
+          username,
+          password,
+          role: 'teacher',
+          teacher_id: teacherId,
+          display_name: teacher.name,
+          created_at: new Date().toISOString()
+        }])
+      });
+      // Also update teacher_id in DB with RLS disabled workaround — direct patch
+      await sbFetch(`users?username=eq.${encodeURIComponent(username)}`, {
+        method: 'PATCH',
+        headers: {'Prefer':'return=minimal'},
+        body: JSON.stringify({ teacher_id: teacherId })
+      });
+      notify(`✅ Account created for ${teacher.name}`);
+      logAction('Created account', `${teacher.name} / ${username}`);
+    }
+    closeAccountModal();
+    await loadAccounts(true);
+  } catch(e) {
+    errEl.textContent = '⚠️ ' + e.message;
+    errEl.style.display = 'block';
+  }
+};
+
+const deleteAccount = async (uid, name) => {
+  if (!confirm(`Remove account for ${name}?`)) return;
+  try {
+    await sbFetch(`users?id=eq.${uid}`, { method:'DELETE' });
+    notify(`Account removed for ${name}`);
+    logAction('Removed account', name);
+    await loadAccounts(true);
+  } catch(e) { notify('⚠️ '+e.message, false); }
 };
 
 // ── Absence ────────────────────────────────────────────────────────────────────
