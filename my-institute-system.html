@@ -2066,7 +2066,7 @@ const submitAttendance = async () => {
   try {
     const existing = await sbFetch(`attendance_log?student_id=eq.${sid}&select=id,logged_at`);
     const todayKey = todayDateKey();
-    const alreadyToday = (existing||[]).some(r => (r.logged_at||'').slice(0,10) === todayKey);
+    const alreadyToday = (existing||[]).some(r => (r.logged_at||'').slice(0,10) === todayKey && !(r.note||'').startsWith('❌ ABSENT'));
     if (alreadyToday) {
       errEl.textContent = '⚠️ Already logged today. You can log again tomorrow.';
       errEl.style.display = 'block';
@@ -2374,7 +2374,7 @@ const renderMyStudents = async () => {
   try {
     const todayKey = todayDateKey();
     const rows = await sbFetch(`attendance_log?teacher_id=eq.${currentUser.teacherId}&select=student_id,logged_at`);
-    (rows||[]).forEach(r => { if ((r.logged_at||'').slice(0,10) === todayKey) todayLogged.add(r.student_id); });
+    (rows||[]).forEach(r => { if ((r.logged_at||'').slice(0,10) === todayKey && !(r.note||'').startsWith('❌ ABSENT')) todayLogged.add(r.student_id); });
   } catch(e) { /* non-fatal */ }
 
   el.innerHTML = myStudents.map(s=>{
