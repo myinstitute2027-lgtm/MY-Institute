@@ -1393,9 +1393,10 @@ const waDirectLink = (phone, msg) => {
 // Returns { homework, sideNote } — both '' if nothing has been logged yet.
 const getLatestHomework = async sid => {
   try {
-    const rows = await sbFetch(`attendance_log?student_id=eq.${sid}&select=note&order=logged_at.desc&limit=1`);
-    if (!rows || !rows.length) return { homework:'', sideNote:'' };
-    const parts = (rows[0].note||'').split(' | Note: ');
+    const rows = await sbFetch(`attendance_log?student_id=eq.${sid}&select=note&order=logged_at.desc&limit=10`);
+    const attendance = (rows||[]).find(r => !(r.note||'').startsWith('❌ ABSENT'));
+    if (!attendance) return { homework:'', sideNote:'' };
+    const parts = (attendance.note||'').split(' | Note: ');
     return { homework: parts[0]||'', sideNote: parts[1]||'' };
   } catch(e) { return { homework:'', sideNote:'' }; }
 };
