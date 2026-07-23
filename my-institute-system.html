@@ -2078,6 +2078,7 @@ const submitAttendance = async () => {
   // Update local state first
   students = students.map(s => s.id === sid ? {...s, hoursUsed: (s.hoursUsed||0) + hours} : s);
   const updatedStu = students.find(s => s.id === sid);
+  const previousHoursUsed = (stu.hoursUsed||0);
 
   // Patch only this student's hours in DB directly
   try {
@@ -2087,13 +2088,13 @@ const submitAttendance = async () => {
       body: JSON.stringify({ hours_used: updatedStu.hoursUsed })
     });
   } catch(e) {
-    students = students.map(s => s.id === sid ? {...s, hoursUsed: (s.hoursUsed||0) - hours} : s);
+    students = students.map(s => s.id === sid ? {...s, hoursUsed: previousHoursUsed} : s);
     errEl.textContent = '⚠️ Could not save the hours to the database. Please try again.';
     errEl.style.display = 'block';
     return;
   }
 
-  // Save to DB
+  // Save attendance log — if this fails, rollback the hours PATCH too
   try {
     await sbFetch('attendance_log', {
       method: 'POST',
@@ -2111,7 +2112,16 @@ const submitAttendance = async () => {
     });
     attendanceCache = null;
   } catch(e) {
-    errEl.textContent = '⚠️ Could not save: ' + e.message;
+    // Rollback: reverse the hours deduction in DB and local state
+    students = students.map(s => s.id === sid ? {...s, hoursUsed: previousHoursUsed} : s);
+    try {
+      await sbFetch(`students?id=eq.${sid}`, {
+        method: 'PATCH',
+        headers: { 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ hours_used: previousHoursUsed })
+      });
+    } catch(_) { /* best effort rollback */ }
+    errEl.textContent = '⚠️ Could not save the attendance log. Hours were NOT deducted. Please try again.';
     errEl.style.display = 'block';
     return;
   }
