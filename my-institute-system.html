@@ -1088,10 +1088,11 @@ const checkMonthlyReset = async () => {
   const last = await getSetting('mit_last_reset');
   if (last !== key) {
     if (last) await archiveCurrentMonth(last);
-    // Carry over remaining hours: new hoursBought = what's left, reset hoursUsed to 0
+    // Carry over remaining hours (including negative balance as debt):
+    // new hoursBought = remaining (can be negative), reset hoursUsed to 0
     students = students.map(s=>({
       ...s,
-      hoursBought: Math.max(0,(s.hoursBought||0)-(s.hoursUsed||0)),
+      hoursBought: (s.hoursBought||0)-(s.hoursUsed||0),
       hoursUsed: 0
     }));
     teachers = teachers.map(t=>({...t, hoursOverride:null, bonus:0, bonusNote:''}));
@@ -1582,7 +1583,7 @@ const applyPromo = () => {
 const manualReset = async () => {
   if (!confirm('Archive current data to History and reset all teacher hours to zero?')) return;
   await archiveCurrentMonth(currentMonthKey());
-  students=students.map(s=>({...s, hoursBought:Math.max(0,(s.hoursBought||0)-(s.hoursUsed||0)), hoursUsed:0}));
+  students=students.map(s=>({...s, hoursBought:(s.hoursBought||0)-(s.hoursUsed||0), hoursUsed:0}));
   teachers=teachers.map(t=>({...t,hoursOverride:null,bonus:0,bonusNote:''}));
   await persist();
   await setSetting('mit_last_reset',currentMonthKey());
