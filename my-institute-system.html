@@ -778,6 +778,46 @@ button:hover{opacity:.85}
   </div>
 </div>
 
+<!-- ADMIN: EDIT ATTENDANCE RECORD MODAL -->
+<div id="edit-attendance-overlay" onclick="closeEditAttendance()" class="overlay-base">
+  <div onclick="event.stopPropagation()" class="modal-base" style="width:420px">
+    <div class="f15 bold gold mb4">✏️ Edit Attendance Record</div>
+    <div class="f13 muted mb16">Admin correction — adjusts student balance & teacher salary automatically</div>
+    <input type="hidden" id="eatt-id"/>
+    <input type="hidden" id="eatt-sid"/>
+    <input type="hidden" id="eatt-old-hours"/>
+    <div class="form-group">
+      <label class="label">Student</label>
+      <div id="eatt-student-name" class="f14 bold" style="padding:8px 0"></div>
+    </div>
+    <div class="form-group">
+      <label class="label">Original Hours Logged</label>
+      <div id="eatt-original-display" class="mono f14" style="padding:8px 0;color:var(--gold)"></div>
+    </div>
+    <div class="form-group">
+      <label class="label">Correct Hours *</label>
+      <select id="eatt-new-hours">
+        <option value="0.5">0.5h — 30 min</option>
+        <option value="1">1h — 60 min</option>
+        <option value="1.5">1.5h — 90 min</option>
+        <option value="2">2h — 120 min</option>
+        <option value="2.5">2.5h — 150 min</option>
+        <option value="3">3h — 180 min</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="label">Reason for Correction *</label>
+      <input id="eatt-reason" placeholder="e.g. Teacher logged 1h but session was 30 min"/>
+    </div>
+    <div id="eatt-preview" style="display:none;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px"></div>
+    <div id="eatt-error" class="f12 red mb8" style="display:none"></div>
+    <div class="flex gap8 mt8">
+      <button class="btn-gold flex1" onclick="submitEditAttendance()">✅ Apply Correction</button>
+      <button class="btn-ghost" onclick="closeEditAttendance()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── Constants & Storage ───────────────────────────────────────────────────────
 const DEFAULT_TEACHER_RATE = 5;
@@ -2181,6 +2221,7 @@ const loadAttendance = async (forceRefresh=false) => {
           </div>
           <div class="flex gap8 items-center">
             <span class="f12 muted">${when}</span>
+            ${isAdmin() ? `<button class="btn-ghost" style="padding:4px 10px;font-size:11px;border-color:var(--gold);color:var(--gold)" onclick="openEditAttendance('${r.id}','${r.student_id}',${r.hours},'${(r.student_name||'').replace(/'/g,"\\'")}')">✏️ Edit</button>` : ''}
             ${showCancel ? `<button class="btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteAttendance('${r.id}','${r.student_id}',${r.hours})">✕ Cancel</button>` : ''}
           </div>
         </div>
@@ -2235,6 +2276,7 @@ const loadAttendance = async (forceRefresh=false) => {
         </div>
         <div class="flex gap8 items-center">
           <span class="f12 muted">${when}</span>
+          ${isAdmin() ? `<button class="btn-ghost" style="padding:4px 10px;font-size:11px;border-color:var(--gold);color:var(--gold)" onclick="openEditAttendance('${r.id}','${r.student_id}',${r.hours},'${(r.student_name||'').replace(/'/g,"\\'")}')">✏️ Edit</button>` : ''}
           ${showCancel ? `<button class="btn-danger" style="padding:4px 10px;font-size:11px" onclick="deleteAttendance('${r.id}','${r.student_id}',${r.hours})">✕ Cancel</button>` : ''}
         </div>
       </div>
@@ -2311,6 +2353,122 @@ const deleteAttendance = async (aid, sid, hours) => {
     loadAttendance(true);
     logAction('Cancelled attendance', `${hours}h reversed`);
   } catch(e) { notify('⚠️ Could not cancel: ' + e.message, false); }
+};
+
+// ── Admin: Edit Attendance Record ─────────────────────────────────────────────
+const openEditAttendance = (aid, sid, oldHours, studentName) => {
+  document.getElementById('eatt-id').value = aid;
+  document.getElementById('eatt-sid').value = sid;
+  document.getElementById('eatt-old-hours').value = oldHours;
+  document.getElementById('eatt-student-name').textContent = studentName;
+  document.getElementById('eatt-original-display').textContent = oldHours + 'h';
+  // Pre-select the current value in the dropdown
+  const sel = document.getElementById('eatt-new-hours');
+  sel.value = String(oldHours);
+  if (!sel.value) sel.value = '1'; // fallback if not in list
+  document.getElementById('eatt-reason').value = '';
+  document.getElementById('eatt-error').style.display = 'none';
+  document.getElementById('eatt-preview').style.display = 'none';
+  document.getElementById('edit-attendance-overlay').classList.add('open');
+  // Live preview on change
+  sel.oninput = updateEattPreview;
+  updateEattPreview();
+};
+
+const updateEattPreview = () => {
+  const sid = document.getElementById('eatt-sid').value;
+  const oldH = parseFloat(document.getElementById('eatt-old-hours').value)||0;
+  const newH = parseFloat(document.getElementById('eatt-new-hours').value)||0;
+  const diff = newH - oldH;
+  if (diff === 0) { document.getElementById('eatt-preview').style.display='none'; return; }
+  const stu = students.find(s => s.id === sid);
+  const currentUsed = stu ? (stu.hoursUsed||0) : 0;
+  const newUsed = Math.max(0, currentUsed + diff);
+  const newRemaining = stu ? Math.max(0,(stu.hoursBought||0) - newUsed) : '?';
+  const sign = diff > 0 ? '+' : '';
+  const col = diff < 0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('eatt-preview').style.display = '';
+  document.getElementById('eatt-preview').innerHTML = `
+    <div class="f12 muted mb8">📊 Impact Preview</div>
+    <div class="flex justify-between mb4"><span>Hours change:</span><span style="color:${col};font-weight:700">${sign}${diff}h</span></div>
+    <div class="flex justify-between mb4"><span>Student used hours:</span><span>${currentUsed}h → <strong>${newUsed}h</strong></span></div>
+    <div class="flex justify-between"><span>Student remaining balance:</span><span style="color:${(stu?(stu.hoursBought||0):0)-newUsed<=1?'var(--red)':'var(--green)'}"><strong>${newRemaining}h</strong></span></div>
+  `;
+};
+
+const closeEditAttendance = () => {
+  document.getElementById('edit-attendance-overlay').classList.remove('open');
+};
+
+const submitEditAttendance = async () => {
+  const aid    = document.getElementById('eatt-id').value;
+  const sid    = document.getElementById('eatt-sid').value;
+  const oldH   = parseFloat(document.getElementById('eatt-old-hours').value)||0;
+  const newH   = parseFloat(document.getElementById('eatt-new-hours').value)||0;
+  const reason = document.getElementById('eatt-reason').value.trim();
+  const errEl  = document.getElementById('eatt-error');
+  errEl.style.display = 'none';
+
+  if (!reason) {
+    errEl.textContent = '⚠️ Please enter a reason for the correction.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (newH === oldH) {
+    errEl.textContent = '⚠️ New hours are the same as the original — no change needed.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const diff = newH - oldH;
+  const stu  = students.find(s => s.id === sid);
+  if (!stu) { errEl.textContent = '⚠️ Student not found.'; errEl.style.display='block'; return; }
+
+  const prevUsed = stu.hoursUsed||0;
+  const newUsed  = Math.max(0, prevUsed + diff);
+
+  // 1. Update attendance_log record (hours field only)
+  try {
+    await sbFetch(`attendance_log?id=eq.${aid}`, {
+      method: 'PATCH',
+      headers: { 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ hours: newH })
+    });
+  } catch(e) {
+    errEl.textContent = '⚠️ Could not update attendance log: ' + e.message;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  // 2. Update student hours_used in DB and local state
+  try {
+    await sbFetch(`students?id=eq.${sid}`, {
+      method: 'PATCH',
+      headers: { 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ hours_used: newUsed })
+    });
+    students = students.map(s => s.id === sid ? {...s, hoursUsed: newUsed} : s);
+  } catch(e) {
+    // Rollback attendance log change
+    try { await sbFetch(`attendance_log?id=eq.${aid}`, { method:'PATCH', headers:{'Prefer':'return=minimal'}, body: JSON.stringify({ hours: oldH }) }); } catch(_){}
+    errEl.textContent = '⚠️ Could not update student hours: ' + e.message;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  // 3. Log to audit trail
+  const sign = diff > 0 ? '+' : '';
+  await logAction(
+    'Admin corrected attendance',
+    `${stu.name}: ${oldH}h → ${newH}h (${sign}${diff}h). Reason: ${reason}`
+  );
+
+  // 4. Refresh UI
+  attendanceCache = null;
+  closeEditAttendance();
+  notify(`✅ Corrected: ${stu.name} ${oldH}h → ${newH}h (${sign}${diff}h applied to balance)`);
+  renderAll();
+  loadAttendance(true);
 };
 
 // Refresh bell count on login (load unseen count without fetching full log)
