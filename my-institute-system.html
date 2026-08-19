@@ -2205,12 +2205,12 @@ const loadAttendance = async (forceRefresh=false) => {
 
     const isAbsent = (r.note||'').startsWith('❌ ABSENT |');
     const stu = students.find(s=>s.id===r.student_id);
-    const remaining = stu ? Math.max(0,(stu.hoursBought||0)-(stu.hoursUsed||0)) : null;
+    const remaining = stu ? (stu.hoursBought||0)-(stu.hoursUsed||0) : null;
     const msgId = 'msg_' + r.id;
 
     if (isAbsent) {
       const absMsg = (r.note||'').replace('❌ ABSENT | ','');
-      const fullAbsMsg = `${absMsg}\n\n⏳ Remaining hours: ${remaining !== null ? remaining+'h' : '?'}`;
+      const fullAbsMsg = `${absMsg}\n\n⏳ Remaining hours: ${remaining !== null ? (remaining<0?'⚠️ '+Math.abs(remaining)+'h overdue':remaining+'h') : '?'}`;
       return `<div class="salary-row" style="flex-direction:column;align-items:flex-start;gap:8px;padding:14px 0">
         <div class="flex justify-between items-center" style="width:100%">
           <div>
@@ -2228,7 +2228,7 @@ const loadAttendance = async (forceRefresh=false) => {
         <div style="background:#1a0808;border-left:3px solid var(--red);padding:8px 12px;border-radius:6px;width:100%;box-sizing:border-box">
           <div class="f12 muted mb4">💬 Motivational Message</div>
           <div class="f13">${absMsg}</div>
-          ${remaining !== null ? `<div class="f12 mt4" style="color:${remaining<=1?'var(--red)':remaining<=3?'var(--gold)':'var(--green)'}">⏳ ${remaining}h remaining</div>` : ''}
+          ${remaining !== null ? `<div class="f12 mt4" style="color:${remaining<0?'var(--red)':remaining<=1?'var(--red)':remaining<=3?'var(--gold)':'var(--green)'}">⏳ ${remaining<0?'⚠️ '+Math.abs(remaining)+'h owed (balance overdrawn)':remaining+'h remaining'}</div>` : ''}
           <textarea id="${msgId}_text" style="display:none">${fullAbsMsg}</textarea>
           <button onclick="copyAttendanceMsg('${msgId}')"
             style="margin-top:8px;padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--red);border-radius:6px;cursor:pointer;color:var(--red);font-weight:600">
@@ -2258,8 +2258,8 @@ const loadAttendance = async (forceRefresh=false) => {
       addon ? '' : undefined,
       addon || undefined,
       '',
-      remaining !== null ? `⏳ Remaining hours: ${remaining}h ${remaining>0?'✅':'🔴'}` : '',
-      remaining === 0 ? `🔔 Please renew your hours to continue sessions.` : '',
+      remaining !== null ? `⏳ Remaining hours: ${remaining<0?'⚠️ '+Math.abs(remaining)+'h overdue 🔴':remaining+'h '+( remaining>0?'✅':'🔴')}` : '',
+      remaining !== null && remaining <= 0 ? `🔔 Please renew your hours to continue sessions.` : '',
       '',
       '💛 Best regards,', `${INSTITUTE_NAME} 🌟`,
     ].filter(l=>l!==undefined).join('\n');
@@ -2271,7 +2271,7 @@ const loadAttendance = async (forceRefresh=false) => {
           <span class="bold f14">${r.student_name}</span>
           <span class="badge badge-amber f12" style="margin-left:8px">${r.hours}h</span>
           <span class="badge badge-blue f12" style="margin-left:4px">${r.teacher_name}</span>
-          ${remaining !== null ? `<span class="badge ${remaining<=1?'badge-red':remaining<=3?'badge-amber':'badge-green'} f12" style="margin-left:4px">${remaining}h left</span>` : ''}
+          ${remaining !== null ? `<span class="badge ${remaining<0?'badge-red':remaining<=1?'badge-red':remaining<=3?'badge-amber':'badge-green'} f12" style="margin-left:4px">${remaining<0?'⚠️ '+Math.abs(remaining)+'h owed':remaining+'h left'}</span>` : ''}
           ${!r.seen_by_admin ? `<span class="badge badge-red f12" style="margin-left:4px">New</span>` : ''}
         </div>
         <div class="flex gap8 items-center">
@@ -2284,7 +2284,7 @@ const loadAttendance = async (forceRefresh=false) => {
         <div class="f12 muted mb4">📚 Homework</div>
         <div class="f13">${homework}</div>
         ${sideNote ? `<div class="f12 muted mt4">💬 ${sideNote}</div>` : ''}
-        ${remaining !== null ? `<div class="f12 mt4" style="color:${remaining<=1?'var(--red)':remaining<=3?'var(--gold)':'var(--green)'}">⏳ ${remaining}h remaining</div>` : ''}
+        ${remaining !== null ? `<div class="f12 mt4" style="color:${remaining<0?'var(--red)':remaining<=1?'var(--red)':remaining<=3?'var(--gold)':'var(--green)'}">⏳ ${remaining<0?'⚠️ '+Math.abs(remaining)+'h owed (balance overdrawn)':remaining+'h remaining'}</div>` : ''}
         <textarea id="${msgId}_text" style="display:none">${combinedMsg}</textarea>
         <div class="flex gap8" style="margin-top:8px">
           ${rowDirectLink ? `<button onclick="window.open('${rowDirectLink}','_blank')"
@@ -2338,7 +2338,7 @@ const deleteAttendance = async (aid, sid, hours) => {
   if (!confirm('Cancel this attendance and reverse the hours?')) return;
   try {
     await sbFetch(`attendance_log?id=eq.${aid}`, { method: 'DELETE' });
-    students = students.map(s => s.id === sid ? {...s, hoursUsed: Math.max(0,(s.hoursUsed||0)-hours)} : s);
+    students = students.map(s => s.id === sid ? {...s, hoursUsed: (s.hoursUsed||0)-hours} : s);
     const updatedStu = students.find(s => s.id === sid);
     if (updatedStu) {
       await sbFetch(`students?id=eq.${sid}`, {
@@ -2383,16 +2383,18 @@ const updateEattPreview = () => {
   if (diff === 0) { document.getElementById('eatt-preview').style.display='none'; return; }
   const stu = students.find(s => s.id === sid);
   const currentUsed = stu ? (stu.hoursUsed||0) : 0;
-  const newUsed = Math.max(0, currentUsed + diff);
-  const newRemaining = stu ? Math.max(0,(stu.hoursBought||0) - newUsed) : '?';
+  const newUsed = currentUsed + diff;
+  const newRemaining = stu ? (stu.hoursBought||0) - newUsed : '?';
   const sign = diff > 0 ? '+' : '';
   const col = diff < 0 ? 'var(--green)' : 'var(--red)';
+  const remColor = typeof newRemaining === 'number' ? (newRemaining < 0 ? 'var(--red)' : newRemaining <= 1 ? 'var(--red)' : 'var(--green)') : 'var(--muted)';
+  const remDisplay = typeof newRemaining === 'number' ? (newRemaining < 0 ? '⚠️ '+Math.abs(newRemaining)+'h owed' : newRemaining+'h') : '?';
   document.getElementById('eatt-preview').style.display = '';
   document.getElementById('eatt-preview').innerHTML = `
     <div class="f12 muted mb8">📊 Impact Preview</div>
     <div class="flex justify-between mb4"><span>Hours change:</span><span style="color:${col};font-weight:700">${sign}${diff}h</span></div>
     <div class="flex justify-between mb4"><span>Student used hours:</span><span>${currentUsed}h → <strong>${newUsed}h</strong></span></div>
-    <div class="flex justify-between"><span>Student remaining balance:</span><span style="color:${(stu?(stu.hoursBought||0):0)-newUsed<=1?'var(--red)':'var(--green)'}"><strong>${newRemaining}h</strong></span></div>
+    <div class="flex justify-between"><span>Student remaining balance:</span><span style="color:${remColor}"><strong>${remDisplay}</strong></span></div>
   `;
 };
 
@@ -3777,7 +3779,7 @@ const submitAbsence = async () => {
 
   // Show copyable message
   const copyId = 'abs_' + sid + '_' + Date.now();
-  const remaining = Math.max(0,(stu.hoursBought||0)-newHoursUsed);
+  const remaining = (stu.hoursBought||0)-newHoursUsed;
   const fullMsg = `${msg}\n\n⏳ Remaining hours: ${remaining}h`;
   notify(`❌ Absence logged — message ready to copy`, false);
 
