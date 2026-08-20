@@ -1595,7 +1595,7 @@ const deleteStudent = sid => {
 const logHours = (sid,delta) => {
   const h=parseFloat(document.getElementById('hrs-'+sid)?.value)||1;
   const s = students.find(s=>s.id===sid);
-  students=students.map(s=> s.id!==sid?s:{...s,hoursUsed:Math.max(0,(s.hoursUsed||0)+h*delta)});
+  students=students.map(s=> s.id!==sid?s:{...s,hoursUsed:(s.hoursUsed||0)+h*delta});
   persist(); renderAll();
   logAction(delta>0?'Logged hours':'Removed hours', `${s?.name||sid}: ${delta>0?'+':'-'}${h}h`);
 };
@@ -2427,7 +2427,7 @@ const submitEditAttendance = async () => {
   if (!stu) { errEl.textContent = '⚠️ Student not found.'; errEl.style.display='block'; return; }
 
   const prevUsed = stu.hoursUsed||0;
-  const newUsed  = Math.max(0, prevUsed + diff);
+  const newUsed  = prevUsed + diff;
 
   // 1. Update attendance_log record (hours field only)
   try {
