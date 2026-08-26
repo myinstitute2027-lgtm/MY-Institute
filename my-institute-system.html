@@ -3981,8 +3981,16 @@ const submitAbsence = async () => {
 };
 document.getElementById('today-date').textContent=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 
-// Nav arrow buttons — show/hide based on scroll position
+// Nav: scroll horizontally with mouse wheel
 const navEl = document.getElementById('nav');
+if (navEl) {
+  navEl.addEventListener('wheel', e => {
+    e.preventDefault();
+    navEl.scrollLeft += e.deltaY + e.deltaX;
+  }, { passive: false });
+}
+
+// Nav arrow buttons — show/hide based on scroll position
 const navLeft = document.getElementById('nav-arrow-left');
 const navRight = document.getElementById('nav-arrow-right');
 const updateNavArrows = () => {
