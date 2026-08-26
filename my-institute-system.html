@@ -128,6 +128,7 @@ button:hover{opacity:.85}
   <button class="nav-btn" id="nav-salary" onclick="showPage('salary')">💵 Salaries</button>
   <button class="nav-btn" id="nav-schedule" onclick="showPage('schedule')">📅 Schedules</button>
   <button class="nav-btn" id="nav-history" onclick="showPage('history')">🗂️ History</button>
+  <button class="nav-btn" id="nav-snapshots" onclick="showPage('snapshots')">📸 Daily Snapshots</button>
   <button class="nav-btn" id="nav-auditlog" onclick="showPage('auditlog')">📋 Activity Log</button>
   <button class="nav-btn" id="nav-backup" onclick="showPage('backup')">💾 Backup</button>
   <button class="nav-btn" id="nav-attendance" onclick="showPage('attendance')">✅ Attendance</button>
@@ -293,6 +294,19 @@ button:hover{opacity:.85}
       </div>
     </div>
     <div id="history-content"></div>
+  </div>
+
+  <!-- DAILY SNAPSHOTS -->
+  <div class="page" id="page-snapshots">
+    <div class="flex justify-between items-center mb16 flex-wrap gap8">
+      <div class="f18 bold">📸 Daily Snapshots</div>
+      <div class="flex gap8 flex-wrap">
+        <select id="snapshot-date-select" onchange="renderSnapshots()" style="max-width:220px"></select>
+        <button class="btn-ghost" onclick="renderSnapshots(true)">🔄 Refresh</button>
+      </div>
+    </div>
+    <div class="f12 muted mb16">كل يوم يتحفظ تلقائي snapshot بساعات المعلمين والطلاب لحظة أول فتح للنظام — بيساعد في كشف أي خطأ في الأرقام.</div>
+    <div id="snapshots-content"></div>
   </div>
 
   <!-- AUDIT LOG -->
@@ -959,7 +973,7 @@ const doLogout = () => {
 
 // Apply role-based visibility of nav items and pages
 const applyRoleUI = () => {
-  const adminNav = ['nav-dashboard','nav-teachers','nav-students','nav-salary','nav-schedule','nav-history','nav-auditlog','nav-backup','nav-attendance','nav-reports','nav-phrases','nav-sendnotifs','nav-accounts'];
+  const adminNav = ['nav-dashboard','nav-teachers','nav-students','nav-salary','nav-schedule','nav-history','nav-snapshots','nav-auditlog','nav-backup','nav-attendance','nav-reports','nav-phrases','nav-sendnotifs','nav-accounts'];
   const teacherNav = ['nav-mystudents','nav-myschedule','nav-mysalary','nav-myreports','nav-mynotifs'];
   if (isAdmin()) {
     adminNav.forEach(id=>document.getElementById(id).style.display='');
@@ -1126,6 +1140,142 @@ const setSetting = async (key, value) => {
 
 // ── Monthly Reset ─────────────────────────────────────────────────────────────
 const currentMonthKey = () => { const d=new Date(); return `${d.getFullYear()}-${d.getMonth()+1}`; };
+
+// ── Daily Snapshots ────────────────────────────────────────────────────────────
+// On every admin login, we check if a snapshot for yesterday already exists.
+// If not, we save one — capturing hours_used for every student and computed
+// hours/salary for every teacher. We NEVER touch the live data; this is read-only.
+
+const snapshotDateKey = (d) => {
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+};
+
+const checkDailySnapshot = async () => {
+  try {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yKey = snapshotDateKey(yesterday);
+
+    // Check if snapshot for yesterday already exists
+    const existing = await sbFetch(`daily_snapshots?date_key=eq.${yKey}&select=id`);
+    if (existing && existing.length > 0) return; // already saved
+
+    // Build snapshot — read-only, no changes to any live table
+    const teacherSnaps = teachers.map(t => {
+      const hrs = teacherHours(t.id);
+      const rate = teacherRate(t);
+      const bonus = parseFloat(t.bonus)||0;
+      return { teacher_id: t.id, name: t.name, rate, hours: hrs, salary: hrs*rate+bonus, bonus, bonus_note: t.bonusNote||'' };
+    });
+
+    const studentSnaps = students.map(s => ({
+      student_id: s.id,
+      name: s.name,
+      teacher_name: (teachers.find(t=>t.id===s.teacherId)||{}).name||'',
+      hours_bought: s.hoursBought||0,
+      hours_used: s.hoursUsed||0,
+      hours_remaining: (s.hoursBought||0)-(s.hoursUsed||0)
+    }));
+
+    await sbFetch('daily_snapshots', {
+      method: 'POST',
+      body: JSON.stringify([{
+        id: uid(),
+        date_key: yKey,
+        label: yesterday.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'}),
+        teachers: JSON.stringify(teacherSnaps),
+        students: JSON.stringify(studentSnaps),
+        created_at: new Date().toISOString()
+      }])
+    });
+    console.log('Daily snapshot saved for', yKey);
+  } catch(e) {
+    console.warn('Daily snapshot failed (non-fatal):', e.message);
+    // Never block the app — snapshots are safety net only
+  }
+};
+
+// ── Render Snapshots Page ──────────────────────────────────────────────────────
+let snapshotsCache = null;
+const renderSnapshots = async (forceRefresh=false) => {
+  const el = document.getElementById('snapshots-content');
+  if (!el) return;
+
+  if (!snapshotsCache || forceRefresh) {
+    el.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">⏳ Loading snapshots…</div>';
+    try {
+      const rows = await sbFetch('daily_snapshots?select=*&order=date_key.desc&limit=90');
+      snapshotsCache = rows || [];
+    } catch(e) {
+      el.innerHTML = `<div class="card" style="text-align:center;padding:40px;color:var(--red)">⚠️ Could not load snapshots: ${e.message}</div>`;
+      return;
+    }
+  }
+
+  if (!snapshotsCache.length) {
+    el.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">لا توجد snapshots بعد — ستظهر هنا من الغد تلقائياً.</div>';
+    return;
+  }
+
+  // Populate date selector
+  const sel = document.getElementById('snapshot-date-select');
+  if (sel) {
+    const prev = sel.value;
+    sel.innerHTML = snapshotsCache.map(s=>`<option value="${s.date_key}"${prev===s.date_key?' selected':''}>${s.label||s.date_key}</option>`).join('');
+    if (!sel.value) sel.value = snapshotsCache[0].date_key;
+  }
+
+  const activeKey = sel ? sel.value : snapshotsCache[0].date_key;
+  const snap = snapshotsCache.find(s=>s.date_key===activeKey) || snapshotsCache[0];
+
+  let teacherRows, studentRows;
+  try { teacherRows = typeof snap.teachers === 'string' ? JSON.parse(snap.teachers) : snap.teachers; } catch(e) { teacherRows = []; }
+  try { studentRows = typeof snap.students === 'string' ? JSON.parse(snap.students) : snap.students; } catch(e) { studentRows = []; }
+
+  const teachersHtml = `
+    <div class="card mb16">
+      <div class="bold gold mb12">👨‍🏫 Teachers — ${snap.label||snap.date_key}</div>
+      ${!teacherRows.length ? '<div class="muted f13">No teacher data.</div>' :
+        teacherRows.sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`
+        <div class="salary-row">
+          <span>${t.name}</span>
+          <div class="flex gap12 items-center">
+            <span class="badge badge-amber">${t.hours}h</span>
+            <span class="badge badge-green">$${(t.salary||0).toFixed(2)}</span>
+          </div>
+        </div>`).join('')}
+    </div>`;
+
+  const studentsHtml = `
+    <div class="card">
+      <div class="bold gold mb12">📚 Students — ${snap.label||snap.date_key}</div>
+      <div class="flex gap8 mb12">
+        <input id="snap-student-search" placeholder="Search student..." oninput="filterSnapshotStudents()" style="max-width:220px"/>
+      </div>
+      <div id="snap-students-list">
+        ${!studentRows.length ? '<div class="muted f13">No student data.</div>' :
+          studentRows.sort((a,b)=>a.name.localeCompare(b.name)).map(s=>`
+          <div class="salary-row snap-student-row">
+            <span>${s.name} <span class="muted f12">(${s.teacher_name||'—'})</span></span>
+            <div class="flex gap12 items-center">
+              <span class="muted f12">${s.hours_used}h used</span>
+              <span class="badge ${s.hours_remaining<=0?'badge-red':s.hours_remaining<=2?'badge-amber':'badge-green'}">${s.hours_remaining}h left</span>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+
+  el.innerHTML = teachersHtml + studentsHtml;
+};
+
+const filterSnapshotStudents = () => {
+  const q = (document.getElementById('snap-student-search')?.value||'').toLowerCase();
+  document.querySelectorAll('.snap-student-row').forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+};
+
 const checkMonthlyReset = async () => {
   const key = currentMonthKey();
   const last = await getSetting('mit_last_reset');
@@ -1154,7 +1304,7 @@ const notify = (msg, ok=true) => {
 };
 
 // ── Navigation ────────────────────────────────────────────────────────────────
-const ADMIN_ONLY_PAGES = ['dashboard','teachers','students','salary','schedule','history','auditlog','backup','attendance','reports','accounts','addTeacher','addStudent','phrases','sendnotifs'];
+const ADMIN_ONLY_PAGES = ['dashboard','teachers','students','salary','schedule','history','snapshots','auditlog','backup','attendance','reports','accounts','addTeacher','addStudent','phrases','sendnotifs'];
 const TEACHER_ONLY_PAGES = ['mystudents','myschedule','mysalary','mynotifs'];
 
 const showPage = async id => {
@@ -3863,6 +4013,7 @@ const init = async () => {
     await loadAllData();
     await loadCustomPhrases();
     if (isAdmin()) await checkMonthlyReset();
+    if (isAdmin()) await checkDailySnapshot();
     document.getElementById('loading-state').style.display = 'none';
     renderAll();
   } catch(e) {
