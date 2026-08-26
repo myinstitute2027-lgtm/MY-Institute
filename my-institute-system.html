@@ -277,7 +277,10 @@ button:hover{opacity:.85}
     </div>
     <div id="schedule-conflicts-banner" style="display:none;margin-bottom:14px;padding:12px 16px;background:var(--red-bg);border:1px solid var(--red-border);border-radius:10px;color:var(--red);font-size:13px"></div>
     <div id="schedule-week-view"><div id="week-grid"></div></div>
-    <div id="schedule-student-view" style="display:none"><div id="student-schedule-list"></div></div>
+    <div id="schedule-student-view" style="display:none">
+      <input type="text" id="schedule-student-search" placeholder="🔍 Search student name..." oninput="renderStudentScheduleView()" style="width:100%;max-width:340px;margin-bottom:14px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px">
+      <div id="student-schedule-list"></div>
+    </div>
     <div id="schedule-teacher-view" style="display:none"><div id="teacher-schedule-list"></div></div>
   </div>
 
@@ -1595,7 +1598,7 @@ const deleteStudent = sid => {
 const logHours = (sid,delta) => {
   const h=parseFloat(document.getElementById('hrs-'+sid)?.value)||1;
   const s = students.find(s=>s.id===sid);
-  students=students.map(s=> s.id!==sid?s:{...s,hoursUsed:(s.hoursUsed||0)+h*delta});
+  students=students.map(s=> s.id!==sid?s:{...s,hoursUsed:Math.max(0,(s.hoursUsed||0)+h*delta)});
   persist(); renderAll();
   logAction(delta>0?'Logged hours':'Removed hours', `${s?.name||sid}: ${delta>0?'+':'-'}${h}h`);
 };
@@ -2116,26 +2119,37 @@ const submitAttendance = async () => {
     }
   } catch(e) { /* non-fatal */ }
 
-  // Update local state first
-  students = students.map(s => s.id === sid ? {...s, hoursUsed: (s.hoursUsed||0) + hours} : s);
-  const updatedStu = students.find(s => s.id === sid);
-  const previousHoursUsed = (stu.hoursUsed||0);
+  // Step 1: Read the REAL current hours_used from DB (not local cache).
+  // This is the key fix for the race condition — each submission reads the live
+  // value from Supabase before writing, so concurrent submissions never overwrite each other.
+  let freshHoursUsed;
+  try {
+    const fresh = await sbFetch(`students?id=eq.${sid}&select=hours_used`);
+    if (!fresh || !fresh[0]) throw new Error('Student not found');
+    freshHoursUsed = parseFloat(fresh[0].hours_used) || 0;
+  } catch(e) {
+    errEl.textContent = '⚠️ Could not read current hours from database. Please try again.';
+    errEl.style.display = 'block';
+    return;
+  }
 
-  // Patch only this student's hours in DB directly
+  const newHoursUsed = freshHoursUsed + hours;
+
+  // Step 2: Write the new value based on the fresh DB value
   try {
     await sbFetch(`students?id=eq.${sid}`, {
       method: 'PATCH',
       headers: { 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ hours_used: updatedStu.hoursUsed })
+      body: JSON.stringify({ hours_used: newHoursUsed })
     });
+    students = students.map(s => s.id === sid ? {...s, hoursUsed: newHoursUsed} : s);
   } catch(e) {
-    students = students.map(s => s.id === sid ? {...s, hoursUsed: previousHoursUsed} : s);
     errEl.textContent = '⚠️ Could not save the hours to the database. Please try again.';
     errEl.style.display = 'block';
     return;
   }
 
-  // Save attendance log — if this fails, rollback the hours PATCH too
+  // Step 3: Save attendance log — if this fails, rollback using the fresh value we read
   try {
     await sbFetch('attendance_log', {
       method: 'POST',
@@ -2153,13 +2167,13 @@ const submitAttendance = async () => {
     });
     attendanceCache = null;
   } catch(e) {
-    // Rollback: reverse the hours deduction in DB and local state
-    students = students.map(s => s.id === sid ? {...s, hoursUsed: previousHoursUsed} : s);
+    // Rollback: restore the value we read from DB before our write
+    students = students.map(s => s.id === sid ? {...s, hoursUsed: freshHoursUsed} : s);
     try {
       await sbFetch(`students?id=eq.${sid}`, {
         method: 'PATCH',
         headers: { 'Prefer': 'return=minimal' },
-        body: JSON.stringify({ hours_used: previousHoursUsed })
+        body: JSON.stringify({ hours_used: freshHoursUsed })
       });
     } catch(_) { /* best effort rollback */ }
     errEl.textContent = '⚠️ Could not save the attendance log. Hours were NOT deducted. Please try again.';
@@ -2338,15 +2352,16 @@ const deleteAttendance = async (aid, sid, hours) => {
   if (!confirm('Cancel this attendance and reverse the hours?')) return;
   try {
     await sbFetch(`attendance_log?id=eq.${aid}`, { method: 'DELETE' });
-    students = students.map(s => s.id === sid ? {...s, hoursUsed: (s.hoursUsed||0)-hours} : s);
-    const updatedStu = students.find(s => s.id === sid);
-    if (updatedStu) {
-      await sbFetch(`students?id=eq.${sid}`, {
-        method: 'PATCH',
-        headers: { 'Prefer': 'return=minimal' },
-        body: JSON.stringify({ hours_used: updatedStu.hoursUsed })
-      });
-    }
+    // Read fresh value from DB before writing, to avoid race conditions
+    const freshRows = await sbFetch(`students?id=eq.${sid}&select=hours_used`);
+    const freshVal = (freshRows && freshRows[0]) ? (parseFloat(freshRows[0].hours_used)||0) : (s.hoursUsed||0);
+    const reversedVal = Math.max(0, freshVal - hours);
+    await sbFetch(`students?id=eq.${sid}`, {
+      method: 'PATCH',
+      headers: { 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ hours_used: reversedVal })
+    });
+    students = students.map(s => s.id === sid ? {...s, hoursUsed: reversedVal} : s);
     attendanceCache = null;
     notify('↩️ Attendance cancelled and hours reversed', true);
     renderAll();
@@ -2427,7 +2442,7 @@ const submitEditAttendance = async () => {
   if (!stu) { errEl.textContent = '⚠️ Student not found.'; errEl.style.display='block'; return; }
 
   const prevUsed = stu.hoursUsed||0;
-  const newUsed  = prevUsed + diff;
+  const newUsed  = Math.max(0, prevUsed + diff);
 
   // 1. Update attendance_log record (hours field only)
   try {
@@ -3041,7 +3056,8 @@ const renderWeekGrid = () => {
 };
 
 const renderStudentScheduleView = () => {
-  const sortedStu = [...students].sort((a,b)=>a.name.localeCompare(b.name));
+  const q = (document.getElementById('schedule-student-search')?.value||'').trim().toLowerCase();
+  const sortedStu = [...students].sort((a,b)=>a.name.localeCompare(b.name)).filter(s=>!q||s.name.toLowerCase().includes(q));
   const withSched = sortedStu.filter(s=>schedules.find(p=>p.studentId===s.id));
   const noSched   = sortedStu.filter(s=>!schedules.find(p=>p.studentId===s.id));
 
@@ -3738,17 +3754,27 @@ const submitAbsence = async () => {
   const msgs = ABSENCE_MESSAGES[style] || ABSENCE_MESSAGES.encourage;
   const msg = msgs[Math.floor(Math.random()*msgs.length)];
 
-  // Deduct hours
-  const newHoursUsed = (stu.hoursUsed||0) + hours;
-  students = students.map(s => s.id === sid ? {...s, hoursUsed: newHoursUsed} : s);
+  // Read fresh value from DB before writing, to avoid race conditions
+  let freshHoursUsedAbsence;
+  try {
+    const fresh = await sbFetch(`students?id=eq.${sid}&select=hours_used`);
+    if (!fresh || !fresh[0]) throw new Error('Student not found');
+    freshHoursUsedAbsence = parseFloat(fresh[0].hours_used) || 0;
+  } catch(e) {
+    errEl.textContent = '⚠️ Could not read current hours from database. Please try again.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const newAbsenceHours = freshHoursUsedAbsence + hours;
 
   try {
-    // Update hours in DB
     await sbFetch(`students?id=eq.${sid}`, {
       method: 'PATCH',
       headers: { 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ hours_used: newHoursUsed })
+      body: JSON.stringify({ hours_used: newAbsenceHours })
     });
+    students = students.map(s => s.id === sid ? {...s, hoursUsed: newAbsenceHours} : s);
 
     // Log in attendance_log as absence
     await sbFetch('attendance_log', {
@@ -3768,7 +3794,15 @@ const submitAbsence = async () => {
     attendanceCache = null;
     logAction('Logged absence', `${stu.name}: -${hours}h`);
   } catch(e) {
-    students = students.map(s => s.id === sid ? {...s, hoursUsed: (s.hoursUsed||0) - hours} : s);
+    // Rollback to the fresh value we read
+    students = students.map(s => s.id === sid ? {...s, hoursUsed: freshHoursUsedAbsence} : s);
+    try {
+      await sbFetch(`students?id=eq.${sid}`, {
+        method: 'PATCH',
+        headers: { 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ hours_used: freshHoursUsedAbsence })
+      });
+    } catch(_) {}
     errEl.textContent = '⚠️ Could not save: ' + e.message;
     errEl.style.display = 'block';
     return;
