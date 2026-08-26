@@ -3975,6 +3975,13 @@ const submitAbsence = async () => {
 };
 document.getElementById('today-date').textContent=new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 
+// Mouse wheel scrolls nav horizontally
+document.getElementById('nav').addEventListener('wheel', e => {
+  if (e.deltaY === 0) return;
+  e.preventDefault();
+  document.getElementById('nav').scrollLeft += e.deltaY;
+}, { passive: false });
+
 const loadAllData = async () => {
   if (isAdmin()) {
     const [teacherRows, studentRows, scheduleRows, historyRows] = await Promise.all([
