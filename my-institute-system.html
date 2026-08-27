@@ -1913,16 +1913,21 @@ const renderDashboard=()=>{
   const activeStudents=students.filter(s=>(s.status||'active')==='active').length;
   const suspendedStudents=students.filter(s=>s.status==='suspended').length;
   const onLeaveStudents=students.filter(s=>s.status==='on_leave').length;
+  const goStudentsFiltered = status => {
+    showPage('students');
+    const sel = document.getElementById('filter-status');
+    if(sel) { sel.value = status; renderStudents(); }
+  };
   document.getElementById('stats-grid').innerHTML=[
-    {label:'Teachers',value:teachers.length,icon:'👨‍🏫',color:'#58a6ff'},
-    {label:'Students',value:students.length,icon:'📚',color:'var(--gold)'},
-    {label:'Active – نشط',value:activeStudents,icon:'✅',color:'var(--green)'},
-    {label:'On Leave – إجازة',value:onLeaveStudents,icon:'🌴',color:'#58a6ff'},
-    {label:'Suspended – متوقف',value:suspendedStudents,icon:'⏸️',color:'var(--red)'},
-    {label:'Hours Taught',value:totalHours+'h',icon:'⏱',color:'var(--green)'},
-    {label:'Teacher Salaries',value:'$'+totalSalary.toFixed(2),icon:'💵',color:'var(--red)'},
-    {label:'Revenue',value:'£'+(students.reduce((a,s)=>a+(s.hoursUsed||0)*(s.rate||STUDENT_RATE),0)).toFixed(2),icon:'💷',color:'var(--green)'},
-  ].map(c=>`<div class="card" style="border-left:3px solid ${c.color}"><div style="font-size:22px;margin-bottom:6px">${c.icon}</div><div style="font-size:26px;font-weight:700;color:${c.color}">${c.value}</div><div class="f12 muted mt4">${c.label}</div></div>`).join('');
+    {label:'Teachers',value:teachers.length,icon:'👨‍🏫',color:'#58a6ff',onclick:"showPage('teachers')"},
+    {label:'Students',value:students.length,icon:'📚',color:'var(--gold)',onclick:"showPage('students');document.getElementById('filter-status').value='all';renderStudents();"},
+    {label:'Active – نشط',value:activeStudents,icon:'✅',color:'var(--green)',onclick:"goStudentsFiltered('active')"},
+    {label:'On Leave – إجازة',value:onLeaveStudents,icon:'🌴',color:'#58a6ff',onclick:"goStudentsFiltered('on_leave')"},
+    {label:'Suspended – متوقف',value:suspendedStudents,icon:'⏸️',color:'var(--red)',onclick:"goStudentsFiltered('suspended')"},
+    {label:'Hours Taught',value:totalHours+'h',icon:'⏱',color:'var(--green)',onclick:''},
+    {label:'Teacher Salaries',value:'$'+totalSalary.toFixed(2),icon:'💵',color:'var(--red)',onclick:"showPage('salary')"},
+    {label:'Revenue',value:'£'+(students.reduce((a,s)=>a+(s.hoursUsed||0)*(s.rate||STUDENT_RATE),0)).toFixed(2),icon:'💷',color:'var(--green)',onclick:''},
+  ].map(c=>`<div class="card" onclick="${c.onclick}" style="border-left:3px solid ${c.color};${c.onclick?'cursor:pointer;transition:opacity .15s':''}" onmouseover="${c.onclick?'this.style.opacity=.75':''}" onmouseout="${c.onclick?'this.style.opacity=1':''}"><div style="font-size:22px;margin-bottom:6px">${c.icon}</div><div style="font-size:26px;font-weight:700;color:${c.color}">${c.value}</div><div class="f12 muted mt4">${c.label}</div></div>`).join('');
 
   const lowHours=students.filter(s=>rem(s)<=1).sort((a,b)=>rem(a)-rem(b));
   document.getElementById('low-hours-alert').innerHTML=lowHours.length===0?'':
