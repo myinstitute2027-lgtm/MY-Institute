@@ -160,6 +160,7 @@ button:hover{opacity:.85}
   <div class="page active" id="page-dashboard">
     <div class="stats-grid" id="stats-grid"></div>
     <div id="low-hours-alert"></div>
+    <div class="card mt16" id="students-status-overview"></div>
     <div class="card mt16" id="teachers-overview"></div>
   </div>
 
@@ -191,6 +192,12 @@ button:hover{opacity:.85}
       <input id="search-input" placeholder="Search student..." oninput="renderStudents()" style="max-width:200px"/>
       <select id="filter-teacher" onchange="renderStudents()" style="max-width:200px">
         <option value="all">All Teachers</option>
+      </select>
+      <select id="filter-status" onchange="renderStudents()" style="max-width:180px">
+        <option value="all">All Statuses</option>
+        <option value="active">✅ Active</option>
+        <option value="suspended">⏸️ Suspended</option>
+        <option value="on_leave">🌴 On Leave</option>
       </select>
     </div>
     <div id="students-list"></div>
@@ -637,6 +644,13 @@ button:hover{opacity:.85}
     </div>
     <div class="form-group"><label class="label">Promo Code</label><input id="edit-student-code" class="mono" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()" placeholder="MY-XXXX123"/></div>
     <div class="form-group"><label class="label">Joined Date</label><input id="edit-student-joined" placeholder="01/01/2024"/></div>
+    <div class="form-group"><label class="label">Status</label>
+      <select id="edit-student-status">
+        <option value="active">✅ Active – نشط</option>
+        <option value="suspended">⏸️ Suspended – متوقف</option>
+        <option value="on_leave">🌴 On Leave – في إجازة</option>
+      </select>
+    </div>
     <div class="flex gap8 mt8">
       <button class="btn-gold flex1" onclick="saveEditStudent()">💾 Save</button>
       <button class="btn-ghost" onclick="closeEditStudent()">Cancel</button>
@@ -914,12 +928,12 @@ const teacherFromDb = r => ({
 const studentToDb = s => ({
   id:s.id, name:s.name, email:s.email||'', teacher_id:s.teacherId||null, phone:s.phone||'',
   hours_bought:s.hoursBought||0, hours_used:s.hoursUsed||0, code:s.code||'', joined_at:s.joinedAt||'',
-  is_trial: s.isTrial||false, rate:s.rate||0, currency:s.currency||'GBP'
+  is_trial: s.isTrial||false, rate:s.rate||0, currency:s.currency||'GBP', status:s.status||'active'
 });
 const studentFromDb = r => ({
   id:r.id, name:r.name, email:r.email||'', teacherId:r.teacher_id||'', phone:r.phone||'',
   hoursBought:r.hours_bought||0, hoursUsed:r.hours_used||0, code:r.code||'', joinedAt:r.joined_at||'',
-  isTrial: r.is_trial||false, rate:r.rate||0, currency:r.currency||'GBP'
+  isTrial: r.is_trial||false, rate:r.rate||0, currency:r.currency||'GBP', status:r.status||'active'
 });
 const scheduleToDb = p => ({ id:p.id, student_id:p.studentId||null, subject:p.subject||'', days:p.days||[] });
 const scheduleFromDb = r => ({ id:r.id, studentId:r.student_id||'', subject:r.subject||'', days:r.days||[] });
@@ -1350,6 +1364,11 @@ const showPage = async id => {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const rem = s => (s.hoursBought||0)-(s.hoursUsed||0);
 const badgeClass = r => r<=1?'badge-red':r<=3?'badge-amber':'badge-green';
+const statusBadge = st => {
+  if(st==='suspended') return '<span class="badge badge-red">⏸️ Suspended</span>';
+  if(st==='on_leave')  return '<span class="badge badge-blue">🌴 On Leave</span>';
+  return '<span class="badge badge-green">✅ Active</span>';
+};
 const teacherRate = t => t.rate||DEFAULT_TEACHER_RATE;
 
 // Effective hours for a teacher = hours actually logged via attendance,
@@ -1734,7 +1753,7 @@ const addStudent = () => {
   const isTrial=document.getElementById('new-student-type-trial').checked;
   if (!name||!tid) return notify('Fill all required fields',false);
   const code=genCode(name);
-  students.push({id:uid(),name,email,phone,teacherId:tid,code,hoursBought:isTrial?1:hours,hoursUsed:0,joinedAt:new Date().toLocaleDateString('en-GB'),isTrial,rate,currency});
+  students.push({id:uid(),name,email,phone,teacherId:tid,code,hoursBought:isTrial?1:hours,hoursUsed:0,joinedAt:new Date().toLocaleDateString('en-GB'),isTrial,rate,currency,status:'active'});
   persist(); notify(name+' added · Code: '+code+(isTrial?' 🎯 Trial':''));
   logAction('Added student', name+(isTrial?' [Trial]':''));
   ['new-student-name','new-student-email','new-student-phone','new-student-hours'].forEach(id=>document.getElementById(id).value='');
@@ -1860,6 +1879,7 @@ const openEditStudent=sid=>{ const s=students.find(s=>s.id===sid); if(!s) return
   document.getElementById('edit-student-currency').value=s.currency||'GBP';
   document.getElementById('edit-student-code').value=s.code||'';
   document.getElementById('edit-student-joined').value=s.joinedAt||'';
+  document.getElementById('edit-student-status').value=s.status||'active';
   const sel=document.getElementById('edit-student-teacher');
   sel.innerHTML='<option value="">No Teacher</option>'+[...teachers].sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`<option value="${t.id}"${s.teacherId===t.id?' selected':''}>${t.name}</option>`).join('');
   document.getElementById('edit-student-overlay').style.display='flex';
@@ -1880,6 +1900,7 @@ const saveEditStudent=()=>{
     currency:document.getElementById('edit-student-currency').value||'GBP',
     code:document.getElementById('edit-student-code').value.trim().toUpperCase()||s.code,
     joinedAt:document.getElementById('edit-student-joined').value.trim()||s.joinedAt,
+    status:document.getElementById('edit-student-status').value||'active',
   });
   persist(); notify(name+' updated ✓'); closeEditStudent(); renderAll();
   logAction('Edited student', name);
@@ -1889,9 +1910,15 @@ const saveEditStudent=()=>{
 const renderDashboard=()=>{
   const totalHours=students.reduce((a,s)=>a+(s.hoursUsed||0),0);
   const totalSalary=teachers.reduce((a,t)=>{ const hrs=teacherHours(t.id); return a+hrs*teacherRate(t)+(parseFloat(t.bonus)||0); },0);
+  const activeStudents=students.filter(s=>(s.status||'active')==='active').length;
+  const suspendedStudents=students.filter(s=>s.status==='suspended').length;
+  const onLeaveStudents=students.filter(s=>s.status==='on_leave').length;
   document.getElementById('stats-grid').innerHTML=[
     {label:'Teachers',value:teachers.length,icon:'👨‍🏫',color:'#58a6ff'},
     {label:'Students',value:students.length,icon:'📚',color:'var(--gold)'},
+    {label:'Active – نشط',value:activeStudents,icon:'✅',color:'var(--green)'},
+    {label:'On Leave – إجازة',value:onLeaveStudents,icon:'🌴',color:'#58a6ff'},
+    {label:'Suspended – متوقف',value:suspendedStudents,icon:'⏸️',color:'var(--red)'},
     {label:'Hours Taught',value:totalHours+'h',icon:'⏱',color:'var(--green)'},
     {label:'Teacher Salaries',value:'$'+totalSalary.toFixed(2),icon:'💵',color:'var(--red)'},
     {label:'Revenue',value:'£'+(students.reduce((a,s)=>a+(s.hoursUsed||0)*(s.rate||STUDENT_RATE),0)).toFixed(2),icon:'💷',color:'var(--green)'},
@@ -1901,6 +1928,34 @@ const renderDashboard=()=>{
   document.getElementById('low-hours-alert').innerHTML=lowHours.length===0?'':
     `<div class="card mt16" style="border-left:3px solid var(--red)"><div class="f13 bold red mb12">⚠️ Low / Negative Balance Alert (${lowHours.length})</div>
     ${lowHours.map(s=>{ const t=teachers.find(t=>t.id===s.teacherId), r=rem(s); return `<div class="alert-row"><div><span class="bold">${s.name}</span><span class="muted f12"> · ${t?.name||'—'}</span></div><span class="badge badge-red">${r<0?'−'+Math.abs(r)+'h owed':r+'h left'}</span></div>`; }).join('')}</div>`;
+
+  // ── Students Status Breakdown ─────────────────────────────────────────────
+  const statusGroups = [
+    { key:'active',     label:'Active – نشط',       icon:'✅', badgeCls:'badge-green', borderColor:'var(--green)' },
+    { key:'on_leave',   label:'On Leave – في إجازة', icon:'🌴', badgeCls:'badge-blue',  borderColor:'#58a6ff' },
+    { key:'suspended',  label:'Suspended – متوقف',   icon:'⏸️', badgeCls:'badge-red',   borderColor:'var(--red)' },
+  ];
+  const statusSections = statusGroups.map(g => {
+    const list = students.filter(s=>(s.status||'active')===g.key).sort((a,b)=>a.name.localeCompare(b.name));
+    if(!list.length) return '';
+    const rows = list.map(s=>{
+      const t=teachers.find(t=>t.id===s.teacherId);
+      const r=rem(s);
+      return `<div class="alert-row" style="padding:8px 0;border-bottom:1px solid var(--border)">
+        <div>
+          <span class="bold">${s.name}</span>
+          <span class="muted f12"> · ${t?.name||'—'}</span>
+        </div>
+        <span class="badge ${badgeClass(r)}">${r<0?'−'+Math.abs(r)+'h owed':r+'h left'}</span>
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:18px">
+      <div class="f13 bold mb8" style="color:${g.borderColor}">${g.icon} ${g.label} (${list.length})</div>
+      ${rows}
+    </div>`;
+  }).join('');
+  document.getElementById('students-status-overview').innerHTML=
+    `<div class="bold gold mb16">📊 Students by Status</div>${statusSections||'<div class="muted f13">No students yet.</div>'}`;
 
   document.getElementById('teachers-overview').innerHTML=`<div class="bold gold mb12">Teachers Overview</div>
     ${teachers.length===0?'<div class="muted f13">No teachers yet.</div>':
@@ -1955,7 +2010,10 @@ const renderTeachers=()=>{
 };
 
 const renderStudents=()=>{
-  document.getElementById('students-title').textContent=`Students (${students.length})`;
+  const act=students.filter(s=>(s.status||'active')==='active').length;
+  const sus=students.filter(s=>s.status==='suspended').length;
+  const lev=students.filter(s=>s.status==='on_leave').length;
+  document.getElementById('students-title').innerHTML=`Students (${students.length}) <span style="font-size:13px;font-weight:400;color:var(--muted)">· ✅${act} ⏸️${sus} 🌴${lev}</span>`;
   const sel=document.getElementById('filter-teacher');
   const curVal=sel.value;
   const sorted=[...teachers].sort((a,b)=>a.name.localeCompare(b.name));
@@ -1966,7 +2024,12 @@ const renderStudents=()=>{
 
   const search=document.getElementById('search-input').value.toLowerCase();
   const filterTid=sel.value;
-  const filtered=students.filter(s=>s.name.toLowerCase().includes(search)&&(filterTid==='all'||s.teacherId===filterTid));
+  const filterStatus=(document.getElementById('filter-status')?.value)||'all';
+  const filtered=students.filter(s=>
+    s.name.toLowerCase().includes(search) &&
+    (filterTid==='all'||s.teacherId===filterTid) &&
+    (filterStatus==='all'||(s.status||'active')===filterStatus)
+  );
 
   if(filtered.length===0){ document.getElementById('students-list').innerHTML='<div class="card muted" style="text-align:center;padding:40px">No students found.</div>'; return; }
 
@@ -1985,6 +2048,7 @@ const renderStudents=()=>{
             ${s.email?`<span class="muted f12">${s.email}</span>`:''}
             <span class="badge badge-amber mono code-pill f12">${s.code}</span>
             ${isDebt?'<span class="badge badge-red">⚠️ Owes hours</span>':''}
+            ${statusBadge(s.status||'active')}
           </div>
           <div class="muted f12 mt4">Joined ${s.joinedAt} ${s.rate?`· <span class="gold">${currSymbol(s.currency)}${s.rate}/h</span>`:''}</div>
         </div>
