@@ -1364,6 +1364,11 @@ const showPage = async id => {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const rem = s => (s.hoursBought||0)-(s.hoursUsed||0);
 const badgeClass = r => r<=1?'badge-red':r<=3?'badge-amber':'badge-green';
+const goStudentsFiltered = status => {
+  showPage('students');
+  const sel = document.getElementById('filter-status');
+  if(sel){ sel.value = status; renderStudents(); }
+};
 const statusBadge = st => {
   if(st==='suspended') return '<span class="badge badge-red">⏸️ Suspended</span>';
   if(st==='on_leave')  return '<span class="badge badge-blue">🌴 On Leave</span>';
@@ -1913,11 +1918,6 @@ const renderDashboard=()=>{
   const activeStudents=students.filter(s=>(s.status||'active')==='active').length;
   const suspendedStudents=students.filter(s=>s.status==='suspended').length;
   const onLeaveStudents=students.filter(s=>s.status==='on_leave').length;
-  const goStudentsFiltered = status => {
-    showPage('students');
-    const sel = document.getElementById('filter-status');
-    if(sel) { sel.value = status; renderStudents(); }
-  };
   document.getElementById('stats-grid').innerHTML=[
     {label:'Teachers',value:teachers.length,icon:'👨‍🏫',color:'#58a6ff',onclick:"showPage('teachers')"},
     {label:'Students',value:students.length,icon:'📚',color:'var(--gold)',onclick:"showPage('students');document.getElementById('filter-status').value='all';renderStudents();"},
