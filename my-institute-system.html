@@ -1014,6 +1014,14 @@ const afterLogin = async () => {
   await init(); // loads all data, runs monthly reset, calls renderAll()
   if (isAdmin()) refreshBellCount();
   if (isTeacherRole()) refreshNotifBadge();
+  // Auto-refresh every 30s so admin sees teacher attendance without manual reload
+  if (isAdmin()) {
+    setInterval(async () => {
+      await refreshCoreData();
+      renderAll();
+      refreshBellCount();
+    }, 30000);
+  }
   // showPage re-renders with loaded data
   showPage(isAdmin() ? 'dashboard' : 'mystudents');
 };
@@ -1767,9 +1775,32 @@ const addStudent = () => {
   showPage('students');
 };
 
-const deleteStudent = sid => {
+const deleteStudent = async sid => {
   if (!confirm('Remove this student?')) return;
   const s = students.find(s=>s.id===sid);
+  if (!s) return;
+
+  // ── Preserve teacher hours ────────────────────────────────────────────────
+  // teacherHours() sums hoursUsed from the students array.
+  // Once we remove the student that sum drops — so we bake the student's
+  // hours into the teacher's hoursOverride BEFORE deleting, keeping salary intact.
+  if (s.teacherId && (s.hoursUsed||0) > 0) {
+    const t = teachers.find(t=>t.id===s.teacherId);
+    if (t) {
+      const currentOverride = parseFloat(t.hoursOverride)||0;
+      const newOverride = currentOverride + (s.hoursUsed||0);
+      teachers = teachers.map(t2 => t2.id===t.id ? {...t2, hoursOverride: newOverride} : t2);
+      try {
+        await sbFetch(`teachers?id=eq.${t.id}`, {
+          method: 'PATCH',
+          headers: {'Prefer':'return=minimal'},
+          body: JSON.stringify({ hours_override: newOverride })
+        });
+      } catch(e) { notify('⚠️ Could not preserve teacher hours: ' + e.message, false); return; }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   students=students.filter(s=>s.id!==sid);
   sbDelete('students','id',sid);
   notify('Student removed'); renderAll();
@@ -2059,10 +2090,10 @@ const renderStudents=()=>{
         </div>
         <div class="flex gap8 items-center flex-wrap">
           <span class="badge ${badgeClass(r)}">${isDebt?'−'+Math.abs(r)+'h owed':r+'h remaining'}</span>
-          ${s.phone ? `<button class="btn-green" onclick="sendWhatsappDirect('${s.id}')">📲 Send WhatsApp</button>` : ''}
-          <button class="btn-ghost" onclick="copyMsg('${s.id}')">📋 Copy</button>
-          <button class="btn-ghost" onclick="openEditStudent('${s.id}')">✏️ Edit</button>
-          <button class="btn-danger" onclick="deleteStudent('${s.id}')">Remove</button>
+          ${s.phone && isAdmin() ? `<button class="btn-green" onclick="sendWhatsappDirect('${s.id}')">📲 Send WhatsApp</button>` : ''}
+          ${isAdmin() ? `<button class="btn-ghost" onclick="copyMsg('${s.id}')">📋 Copy</button>` : ''}
+          ${isAdmin() ? `<button class="btn-ghost" onclick="openEditStudent('${s.id}')">✏️ Edit</button>` : ''}
+          ${isAdmin() ? `<button class="btn-danger" onclick="deleteStudent('${s.id}')">Remove</button>` : ''}
         </div>
       </div>
       <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${isDebt?100:pct}%;background:${barColor}"></div></div>
@@ -2362,12 +2393,20 @@ const submitAttendance = async () => {
   const newHoursUsed = freshHoursUsed + hours;
 
   // Step 2: Write the new value based on the fresh DB value
+  // Use return=representation so we get the updated row back — if RLS blocks
+  // the update, Supabase returns an empty array instead of throwing, so we
+  // can detect the silent failure and stop before logging attendance.
   try {
-    await sbFetch(`students?id=eq.${sid}`, {
+    const updated = await sbFetch(`students?id=eq.${sid}`, {
       method: 'PATCH',
-      headers: { 'Prefer': 'return=minimal' },
+      headers: { 'Prefer': 'return=representation' },
       body: JSON.stringify({ hours_used: newHoursUsed })
     });
+    if (!updated || !updated.length) {
+      errEl.textContent = '⚠️ Could not deduct hours — database did not confirm the update. Please contact the admin.';
+      errEl.style.display = 'block';
+      return;
+    }
     students = students.map(s => s.id === sid ? {...s, hoursUsed: newHoursUsed} : s);
   } catch(e) {
     errEl.textContent = '⚠️ Could not save the hours to the database. Please try again.';
@@ -2527,14 +2566,14 @@ const loadAttendance = async (forceRefresh=false) => {
         ${remaining !== null ? `<div class="f12 mt4" style="color:${remaining<0?'var(--red)':remaining<=1?'var(--red)':remaining<=3?'var(--gold)':'var(--green)'}">⏳ ${remaining<0?'⚠️ '+Math.abs(remaining)+'h owed (balance overdrawn)':remaining+'h remaining'}</div>` : ''}
         <textarea id="${msgId}_text" style="display:none">${combinedMsg}</textarea>
         <div class="flex gap8" style="margin-top:8px">
-          ${rowDirectLink ? `<button onclick="window.open('${rowDirectLink}','_blank')"
+          ${rowDirectLink && isAdmin() ? `<button onclick="window.open('${rowDirectLink}','_blank')"
               style="padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--gold);border-radius:6px;cursor:pointer;color:var(--gold);font-weight:600">
               📲 Send WhatsApp
             </button>` : ''}
-          <button onclick="copyAttendanceMsg('${msgId}')"
+          ${isAdmin() ? `<button onclick="copyAttendanceMsg('${msgId}')"
             style="padding:5px 12px;font-size:12px;background:transparent;border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--muted);font-weight:600">
             📋 Copy
-          </button>
+          </button>` : ''}
         </div>
       </div>` : ''}
     </div>`;
