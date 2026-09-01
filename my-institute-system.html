@@ -205,16 +205,23 @@ button:hover{opacity:.85}
 
   <!-- SALARY -->
   <div class="page" id="page-salary">
-    <div class="flex justify-between items-center mb16 flex-wrap gap8">
+    <div class="flex justify-between items-center mb12 flex-wrap gap8">
       <div class="f18 bold" id="salary-title">Salary Calculator</div>
       <div class="flex gap8 items-center flex-wrap">
-        <label class="label" style="margin:0;white-space:nowrap">💱 USD → EGP</label>
-        <input id="usd-rate" type="number" min="1" step="0.5" placeholder="50" style="width:90px"
-          oninput="renderSalary()" title="Exchange rate: 1 USD = ? EGP"/>
+        <select id="salary-month-select" onchange="onSalaryMonthChange()" style="max-width:200px;border-color:var(--gold);color:var(--gold)">
+          <option value="__current__">📅 Current Month</option>
+        </select>
+        <div class="flex items-center gap8" id="salary-rate-box">
+          <label class="label" style="margin:0;white-space:nowrap">💱 USD → EGP</label>
+          <input id="usd-rate" type="number" min="1" step="0.5" placeholder="50" style="width:90px"
+            oninput="onUsdRateInput()" title="Exchange rate: 1 USD = ? EGP"/>
+          <span id="usd-rate-saved" class="f12 green" style="display:none">✓ Saved</span>
+        </div>
       </div>
     </div>
-    <div class="flex gap8 mb16 flex-wrap">
+    <div class="flex gap8 mb16 flex-wrap items-center">
       <input id="salary-search-input" placeholder="Search teacher..." oninput="renderSalary()" style="max-width:220px"/>
+      <span id="salary-history-badge" class="badge badge-amber" style="display:none">🗂️ Archived Month</span>
     </div>
     <div id="salary-list"></div>
     <div class="card mt16" id="salary-total"></div>
@@ -1121,7 +1128,12 @@ const monthLabel = key => {
 // Snapshot current month's teacher/student performance into history before reset
 const archiveCurrentMonth = async (key) => {
   if (!teachers.length && !students.length) return; // nothing to archive
-  const usdRate = getUsdRate();
+  // Use the live input value; fall back to the last saved setting
+  let usdRate = getUsdRate();
+  if (!usdRate) {
+    const saved = await getSetting('mit_usd_rate');
+    usdRate = parseFloat(saved)||0;
+  }
   const teacherSnapshots = teachers.map(t=>{
     const hrs = teacherHours(t.id);
     const rate = teacherRate(t);
@@ -1716,6 +1728,98 @@ const salaryReport = tid => {
   return lines.join('\n');
 };
 
+// ── History Salary Report builder ─────────────────────────────────────────────
+const buildHistoryReportText = (t, entry) => {
+  const usdRate = entry.usdRate||0;
+  const lines = [];
+  lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  lines.push('       '+INSTITUTE_NAME.toUpperCase());
+  lines.push('   Salary Report – '+entry.label);
+  lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  lines.push('');
+  lines.push('Teacher : '+t.name);
+  lines.push('');
+  lines.push('─── Hours Breakdown ───────────');
+  if (!t.students || !t.students.length) {
+    lines.push('  No students assigned.');
+  } else {
+    t.students.forEach(s => lines.push('  • '+s.name+': '+s.hoursUsed+'h  →  $'+s.amount.toFixed(2)));
+  }
+  lines.push('');
+  lines.push('─── Salary Calculation ────────');
+  lines.push('  Total Hours   : '+t.hours+'h');
+  lines.push('  Rate / Hour   : $'+t.rate.toFixed(2));
+  lines.push('  Base Salary   : $'+t.baseSalary.toFixed(2));
+  if (t.bonus > 0) lines.push('  Bonus         : $'+t.bonus.toFixed(2)+(t.bonusNote?' ('+t.bonusNote+')':''));
+  lines.push('  ─────────────────────────────');
+  lines.push('  Total (USD)   : $'+t.total.toFixed(2));
+  if (usdRate > 0) {
+    lines.push('  Rate USD→EGP  : '+usdRate);
+    lines.push('  Total (EGP)   : £E '+(t.total*usdRate).toFixed(2));
+  }
+  lines.push('');
+  lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  lines.push('Thank you for your hard work and dedication! 🌟');
+  lines.push('');
+  lines.push(INSTITUTE_NAME+' · '+INSTITUTE_WEBSITE);
+  lines.push('WhatsApp: '+INSTITUTE_WHATSAPP);
+  return lines.join('\n');
+};
+
+// Open salary report modal for an archived month teacher
+const openSalaryReportFromHistory = async (monthKey, teacherIdOrName) => {
+  const entry = history.find(h=>h.key===monthKey);
+  if (!entry) return;
+  const t = entry.teachers.find(t=>t.teacherId===teacherIdOrName||t.name===teacherIdOrName);
+  if (!t) return;
+  const baseText = buildHistoryReportText(t, entry);
+  const modal = document.getElementById('salary-report-overlay');
+  const ta = document.getElementById('salary-report-preview');
+  const btn = document.getElementById('salary-copy-btn');
+  ta.value = baseText + '\n\n⏳ Generating personalised message…';
+  btn.textContent = '📋 Copy Report';
+  modal.style.display = 'flex';
+  // Generate AI motivational sentence
+  try {
+    const aiLine = await generateTeacherMotivation(t.name, t.hours, t.total, entry.label);
+    ta.value = baseText.replace('Thank you for your hard work and dedication! 🌟', aiLine);
+  } catch(e) {
+    ta.value = baseText; // fallback to default
+  }
+};
+
+// Generate an AI-powered motivational sentence for the teacher
+const generateTeacherMotivation = async (teacherName, hours, totalUsd, monthLabel) => {
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: `Write a single warm, professional motivational sentence (max 2 lines) in English to include at the end of a salary report for an Islamic education teacher.
+Teacher: ${teacherName}
+Hours taught this month: ${hours}h
+Salary earned: $${totalUsd.toFixed(2)}
+Month: ${monthLabel}
+The sentence should:
+- Acknowledge their dedication and the Islamic nature of their work (teaching Quran/Arabic)
+- Be genuine, warm, not generic
+- Include one relevant Islamic phrase or reference (e.g. Barakallahu feek, may Allah reward you)
+- Be concise — one or two sentences only
+Return ONLY the sentence, no preamble, no quotes.`
+        }]
+      })
+    });
+    const data = await res.json();
+    return (data.content && data.content[0] && data.content[0].text) || 'Thank you for your hard work and dedication! 🌟';
+  } catch(e) {
+    return 'Thank you for your hard work and dedication this month! 🌟';
+  }
+};
+
 // ── Copy helper ───────────────────────────────────────────────────────────────
 const doCopy = (textareaId, btnId) => {
   const ta=document.getElementById(textareaId);
@@ -1842,6 +1946,7 @@ const manualReset = async () => {
   teachers=teachers.map(t=>({...t,hoursOverride:null,bonus:0,bonusNote:''}));
   await persist();
   await setSetting('mit_last_reset',currentMonthKey());
+  populateSalaryMonthDropdown();
   notify('✅ Saved to History and hours reset to zero.',true); renderAll();
   logAction('Manual monthly reset', currentMonthKey());
 };
@@ -1870,7 +1975,25 @@ const sendWhatsappDirect=async sid=>{
 };
 
 const closeSalaryReport=()=>document.getElementById('salary-report-overlay').style.display='none';
-const openSalaryReport=tid=>{ document.getElementById('salary-report-preview').value=salaryReport(tid); document.getElementById('salary-copy-btn').textContent='📋 Copy Report'; document.getElementById('salary-report-overlay').style.display='flex'; };
+const openSalaryReport=async tid=>{
+  const baseText = salaryReport(tid);
+  const ta = document.getElementById('salary-report-preview');
+  const btn = document.getElementById('salary-copy-btn');
+  ta.value = baseText + '\n\n⏳ Generating personalised message…';
+  btn.textContent = '📋 Copy Report';
+  document.getElementById('salary-report-overlay').style.display='flex';
+  // Generate AI motivational sentence
+  const t = teachers.find(t=>t.id===tid);
+  if (t) {
+    try {
+      const hrs = teacherHours(tid);
+      const total = hrs * teacherRate(t) + (parseFloat(t.bonus)||0);
+      const month = new Date().toLocaleString('en-GB',{month:'long',year:'numeric'});
+      const aiLine = await generateTeacherMotivation(t.name, hrs, total, month);
+      ta.value = baseText.replace('Thank you for your hard work and dedication this month! 🌟', aiLine);
+    } catch(e) { ta.value = baseText; }
+  } else { ta.value = baseText; }
+};
 
 // Edit Teacher
 const openEditTeacher=tid=>{ const t=teachers.find(t=>t.id===tid); if(!t) return;
@@ -2139,7 +2262,110 @@ const renderStudents=()=>{
   document.getElementById('students-list').innerHTML=html||'<div class="card muted" style="text-align:center;padding:40px">No students found.</div>';
 };
 
+// ── Salary Month State ────────────────────────────────────────────────────────
+let _salaryViewingHistoryKey = null; // null = current month, string key = archived month
+
+const populateSalaryMonthDropdown = () => {
+  const sel = document.getElementById('salary-month-select');
+  if (!sel) return;
+  const curVal = sel.value || '__current__';
+  const sorted = [...history].sort((a,b)=>b.key.localeCompare(a.key,undefined,{numeric:true}));
+  sel.innerHTML = `<option value="__current__">📅 Current Month (${new Date().toLocaleString('en-GB',{month:'long',year:'numeric'})})</option>`
+    + sorted.map(h=>`<option value="${h.key}"${curVal===h.key?' selected':''}>${h.label}</option>`).join('');
+  if (!sorted.find(h=>h.key===curVal)) sel.value = '__current__';
+};
+
+const onSalaryMonthChange = () => {
+  const val = document.getElementById('salary-month-select')?.value;
+  _salaryViewingHistoryKey = (val && val !== '__current__') ? val : null;
+  const badge = document.getElementById('salary-history-badge');
+  const rateBox = document.getElementById('salary-rate-box');
+  if (badge) badge.style.display = _salaryViewingHistoryKey ? '' : 'none';
+  if (rateBox) rateBox.style.display = _salaryViewingHistoryKey ? 'none' : '';
+  renderSalary();
+};
+
+let _usdRateSaveTimer = null;
+const onUsdRateInput = () => {
+  renderSalary();
+  // Auto-save to settings after 1s debounce
+  clearTimeout(_usdRateSaveTimer);
+  _usdRateSaveTimer = setTimeout(async () => {
+    const val = parseFloat(document.getElementById('usd-rate')?.value)||0;
+    if (val > 0) {
+      await setSetting('mit_usd_rate', String(val));
+      const indicator = document.getElementById('usd-rate-saved');
+      if (indicator) { indicator.style.display=''; setTimeout(()=>indicator.style.display='none',2000); }
+    }
+  }, 1000);
+};
+
 const renderSalary=()=>{
+  // ── Archived month view ──────────────────────────────────────────────────────
+  if (_salaryViewingHistoryKey) {
+    const entry = history.find(h=>h.key===_salaryViewingHistoryKey);
+    if (!entry) {
+      document.getElementById('salary-title').textContent='Salary Calculator';
+      document.getElementById('salary-list').innerHTML='<div class="card muted" style="text-align:center;padding:40px">Month not found in history.</div>';
+      document.getElementById('salary-total').innerHTML='';
+      return;
+    }
+    document.getElementById('salary-title').textContent=`Salary Calculator · ${entry.label}`;
+    const usdRate = entry.usdRate||0;
+    const search=(document.getElementById('salary-search-input')?.value||'').toLowerCase();
+    const filteredT = entry.teachers.filter(t=>t.name.toLowerCase().includes(search));
+
+    document.getElementById('salary-list').innerHTML = !filteredT.length
+      ? '<div class="card muted" style="text-align:center;padding:40px">No teachers recorded.</div>'
+      : [...filteredT].sort((a,b)=>a.name.localeCompare(b.name)).map(t=>{
+          const totalUsd = t.total;
+          const reportId = 'report_hist_'+t.name.replace(/\s/g,'_')+'_'+entry.key;
+          const reportText = buildHistoryReportText(t, entry);
+          return `<div class="card mb12">
+            <div class="flex justify-between items-center flex-wrap gap8 mb12">
+              <div>
+                <div class="bold f15">${t.name}</div>
+                <div class="f12 muted mt4">Rate: $${t.rate}/h · Archived: ${entry.label}</div>
+              </div>
+              <div class="flex gap8 flex-wrap">
+                <span class="badge badge-amber">${t.hours}h taught</span>
+                <span class="badge badge-red">Base: $${t.baseSalary.toFixed(2)}</span>
+                ${t.bonus>0?`<span class="badge badge-blue">Bonus: +$${t.bonus.toFixed(2)}</span>`:''}
+                <span class="badge badge-red" style="font-weight:700">Total: $${totalUsd.toFixed(2)}</span>
+                ${usdRate>0?`<span class="badge badge-green">£E ${(totalUsd*usdRate).toFixed(2)}</span>`:''}
+                <button class="btn-green" onclick="openSalaryReportFromHistory('${entry.key}','${t.teacherId||t.name}')">📋 Send Report</button>
+              </div>
+            </div>
+            <textarea id="${reportId}_text" style="display:none">${reportText}</textarea>
+            <div style="border-top:1px solid var(--border);padding-top:12px">
+              <div class="f12 muted mb8" style="text-transform:uppercase;letter-spacing:.5px">Breakdown by student</div>
+              ${!t.students.length?'<div class="muted f13">No students recorded.</div>':
+              t.students.map(s=>`<div class="salary-row">
+                <span>${s.name}</span>
+                <div class="flex gap12">
+                  <span class="muted">${s.hoursUsed}h</span>
+                  <span class="red">$${s.amount.toFixed(2)}</span>
+                </div>
+              </div>`).join('')}
+              ${t.bonus>0?`<div class="salary-row" style="border-bottom:none"><span class="gold">Bonus</span><div class="flex gap12"><span class="gold">$${t.bonus.toFixed(2)}</span><span class="muted f12">${t.bonusNote||''}</span></div></div>`:''}
+            </div>
+          </div>`;
+        }).join('');
+
+    const totalHrs = entry.totalHours||0;
+    const totalSalary = entry.totalSalary||0;
+    document.getElementById('salary-total').innerHTML=`
+      <div class="bold gold mb12">Total Summary · ${entry.label}</div>
+      ${[
+        {label:'Total hours taught',value:totalHrs+'h'},
+        {label:'Total teacher salaries (USD)',value:'$'+totalSalary.toFixed(2)},
+        usdRate>0?{label:'Total salaries (EGP) · rate: '+usdRate,value:'£E '+(totalSalary*usdRate).toFixed(2)}:null,
+        {label:'Total revenue from students',value:'£'+((entry.totalRevenue||0).toFixed(2))},
+      ].filter(Boolean).map(r=>`<div class="salary-row"><span class="muted">${r.label}</span><span class="bold">${r.value}</span></div>`).join('')}`;
+    return;
+  }
+
+  // ── Current month live view ──────────────────────────────────────────────────
   const month=new Date().toLocaleString('en-GB',{month:'long',year:'numeric'});
   document.getElementById('salary-title').textContent=`Salary Calculator · ${month}`;
   const usdRate=getUsdRate();
@@ -4151,7 +4377,16 @@ const init = async () => {
     await loadCustomPhrases();
     if (isAdmin()) await checkMonthlyReset();
     if (isAdmin()) await checkDailySnapshot();
+    // Load saved USD rate
+    if (isAdmin()) {
+      const savedRate = await getSetting('mit_usd_rate');
+      if (savedRate) {
+        const el = document.getElementById('usd-rate');
+        if (el && !el.value) el.value = savedRate;
+      }
+    }
     document.getElementById('loading-state').style.display = 'none';
+    populateSalaryMonthDropdown();
     renderAll();
   } catch(e) {
     document.getElementById('loading-state').style.display = '';
