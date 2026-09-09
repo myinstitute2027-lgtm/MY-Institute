@@ -339,7 +339,10 @@ button:hover{opacity:.85}
       <input type="text" id="schedule-student-search" placeholder="🔍 Search student name..." oninput="renderStudentScheduleView()" style="width:100%;max-width:340px;margin-bottom:14px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px">
       <div id="student-schedule-list"></div>
     </div>
-    <div id="schedule-teacher-view" style="display:none"><div id="teacher-schedule-list"></div></div>
+    <div id="schedule-teacher-view" style="display:none">
+      <input type="text" id="schedule-teacher-search" placeholder="🔍 Search teacher name..." oninput="renderTeacherScheduleView()" style="width:100%;max-width:340px;margin-bottom:14px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px">
+      <div id="teacher-schedule-list"></div>
+    </div>
   </div>
 
   <!-- HISTORY -->
@@ -516,9 +519,14 @@ button:hover{opacity:.85}
     <div class="f12 muted mb16">Choose the student's days and set the time for each day</div>
     <input type="hidden" id="stu-sched-sid"/>
 
-    <div class="form-group">
+    <div class="form-group" style="position:relative">
       <label class="label">Student *</label>
-      <select id="stu-sched-student" onchange="onScheduleStudentChange()"></select>
+      <input type="text" id="stu-sched-student-search" placeholder="🔍 Search student name..." autocomplete="off"
+        oninput="filterStudentSchedDropdown()"
+        onfocus="filterStudentSchedDropdown()"
+        style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:14px"/>
+      <input type="hidden" id="stu-sched-student"/>
+      <div id="stu-sched-student-dropdown" style="display:none;position:absolute;z-index:9999;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:8px;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.18);margin-top:2px"></div>
     </div>
     <div class="form-group">
       <label class="label">Subject / Note</label>
@@ -971,12 +979,14 @@ const teacherFromDb = r => ({
 const studentToDb = s => ({
   id:s.id, name:s.name, email:s.email||'', teacher_id:s.teacherId||null, phone:s.phone||'',
   hours_bought:s.hoursBought||0, hours_used:s.hoursUsed||0, code:s.code||'', joined_at:s.joinedAt||'',
-  is_trial: s.isTrial||false, rate:s.rate||0, currency:s.currency||'GBP', status:s.status||'active'
+  is_trial: s.isTrial||false, rate:s.rate||0, currency:s.currency||'GBP', status:s.status||'active',
+  transferred_hours: s.transferredHours||0
 });
 const studentFromDb = r => ({
   id:r.id, name:r.name, email:r.email||'', teacherId:r.teacher_id||'', phone:r.phone||'',
   hoursBought:r.hours_bought||0, hoursUsed:r.hours_used||0, code:r.code||'', joinedAt:r.joined_at||'',
-  isTrial: r.is_trial||false, rate:r.rate||0, currency:r.currency||'GBP', status:r.status||'active'
+  isTrial: r.is_trial||false, rate:r.rate||0, currency:r.currency||'GBP', status:r.status||'active',
+  transferredHours: r.transferred_hours||0
 });
 const scheduleToDb = p => ({ id:p.id, student_id:p.studentId||null, subject:p.subject||'', days:p.days||[] });
 const scheduleFromDb = r => ({ id:r.id, studentId:r.student_id||'', subject:r.subject||'', days:r.days||[] });
@@ -1496,13 +1506,16 @@ const statusBadge = st => {
 };
 const teacherRate = t => t.rate||DEFAULT_TEACHER_RATE;
 
-// Effective hours for a teacher = hours actually logged via attendance,
+// Effective hours for a teacher = hours actually logged via attendance with THIS teacher,
 // PLUS an optional manual adjustment (+/-) for correcting mistakes.
-// This is intentionally additive rather than a hard override: new attendance
-// logged after a manual correction still keeps counting normally.
+// transferredHours on a student holds hours they accumulated with previous teachers —
+// those are excluded here so the current teacher is only credited for their own work.
 const teacherHours = tid => {
   const t = teachers.find(t=>t.id===tid);
-  const autoHours = students.filter(s=>s.teacherId===tid).reduce((a,s)=>a+(s.hoursUsed||0),0);
+  const autoHours = students.filter(s=>s.teacherId===tid).reduce((a,s)=>{
+    const hoursWithThisTeacher = Math.max(0, (s.hoursUsed||0) - (s.transferredHours||0));
+    return a + hoursWithThisTeacher;
+  }, 0);
   const adjustment = (t && t.hoursOverride !== null && t.hoursOverride !== undefined && t.hoursOverride !== '')
     ? (parseFloat(t.hoursOverride)||0) : 0;
   return autoHours + adjustment;
@@ -1987,12 +2000,14 @@ const deleteStudent = async sid => {
   // ── Preserve teacher hours ────────────────────────────────────────────────
   // teacherHours() sums hoursUsed from the students array.
   // Once we remove the student that sum drops — so we bake the student's
-  // hours into the teacher's hoursOverride BEFORE deleting, keeping salary intact.
-  if (s.teacherId && (s.hoursUsed||0) > 0) {
+  // hours (only those earned with this teacher) into the teacher's hoursOverride
+  // BEFORE deleting, keeping salary intact.
+  const hoursWithCurrentTeacher = Math.max(0, (s.hoursUsed||0) - (s.transferredHours||0));
+  if (s.teacherId && hoursWithCurrentTeacher > 0) {
     const t = teachers.find(t=>t.id===s.teacherId);
     if (t) {
       const currentOverride = parseFloat(t.hoursOverride)||0;
-      const newOverride = currentOverride + (s.hoursUsed||0);
+      const newOverride = currentOverride + hoursWithCurrentTeacher;
       teachers = teachers.map(t2 => t2.id===t.id ? {...t2, hoursOverride: newOverride} : t2);
       try {
         await sbFetch(`teachers?id=eq.${t.id}`, {
@@ -2144,25 +2159,71 @@ const openEditStudent=sid=>{ const s=students.find(s=>s.id===sid); if(!s) return
   document.getElementById('edit-student-overlay').style.display='flex';
 };
 const closeEditStudent=()=>document.getElementById('edit-student-overlay').style.display='none';
-const saveEditStudent=()=>{
+const saveEditStudent=async()=>{
   const sid=document.getElementById('edit-student-id').value;
   const name=document.getElementById('edit-student-name').value.trim();
   if(!name) return notify('Name is required',false);
+
+  const oldStudent = students.find(s=>s.id===sid);
+  const newTeacherId = document.getElementById('edit-student-teacher').value;
+  const teacherChanged = oldStudent && newTeacherId !== (oldStudent.teacherId||'');
+
+  // ── Teacher transfer: preserve old teacher's hours ────────────────────────
+  // When a student moves to a new teacher:
+  //  1. The hours the student accumulated with the old teacher are baked into
+  //     that teacher's hoursOverride so their salary stays intact.
+  //  2. The student's hoursUsed is NOT reset — their full history is preserved.
+  //     Instead, transferredHours is updated to the current hoursUsed, so
+  //     teacherHours() knows to only credit the new teacher for hours logged
+  //     AFTER the transfer (hoursUsed - transferredHours).
+  let newTransferredHours = oldStudent ? (oldStudent.transferredHours||0) : 0;
+  if (teacherChanged && oldStudent.teacherId) {
+    const hoursWithOldTeacher = Math.max(0, (oldStudent.hoursUsed||0) - (oldStudent.transferredHours||0));
+    if (hoursWithOldTeacher > 0) {
+      const oldTeacher = teachers.find(t=>t.id===oldStudent.teacherId);
+      if (oldTeacher) {
+        const currentOverride = parseFloat(oldTeacher.hoursOverride)||0;
+        const newOverride = currentOverride + hoursWithOldTeacher;
+        teachers = teachers.map(t2 => t2.id===oldTeacher.id ? {...t2, hoursOverride: newOverride} : t2);
+        try {
+          await sbFetch(`teachers?id=eq.${oldTeacher.id}`, {
+            method: 'PATCH',
+            headers: {'Prefer':'return=minimal'},
+            body: JSON.stringify({ hours_override: newOverride })
+          });
+        } catch(e) { notify('⚠️ Could not preserve old teacher hours: ' + e.message, false); return; }
+      }
+    }
+    // Mark all hours up to this point as "transferred" — new teacher starts fresh
+    newTransferredHours = oldStudent.hoursUsed||0;
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   students=students.map(s=>s.id!==sid?s:{...s,
     name,
     email:document.getElementById('edit-student-email').value.trim(),
     phone:document.getElementById('edit-student-phone').value.trim(),
-    teacherId:document.getElementById('edit-student-teacher').value,
+    teacherId:newTeacherId,
     hoursBought:parseFloat(document.getElementById('edit-student-bought').value)||0,
     hoursUsed:parseFloat(document.getElementById('edit-student-used').value)||0,
+    transferredHours: teacherChanged ? newTransferredHours : (s.transferredHours||0),
     rate:parseFloat(document.getElementById('edit-student-rate').value)||0,
     currency:document.getElementById('edit-student-currency').value||'GBP',
     code:document.getElementById('edit-student-code').value.trim().toUpperCase()||s.code,
     joinedAt:document.getElementById('edit-student-joined').value.trim()||s.joinedAt,
     status:document.getElementById('edit-student-status').value||'active',
   });
-  persist(); notify(name+' updated ✓'); closeEditStudent(); renderAll();
-  logAction('Edited student', name);
+  persist();
+  if (teacherChanged) {
+    const oldTeacherName = teachers.find(t=>t.id===(oldStudent?.teacherId||''))?.name || 'previous teacher';
+    const newTeacherName = teachers.find(t=>t.id===newTeacherId)?.name || 'new teacher';
+    notify(`${name} transferred from ${oldTeacherName} → ${newTeacherName} ✓`);
+    logAction('Transferred student', `${name}: ${oldTeacherName} → ${newTeacherName}`);
+  } else {
+    notify(name+' updated ✓');
+    logAction('Edited student', name);
+  }
+  closeEditStudent(); renderAll();
 };
 
 // ── Render ────────────────────────────────────────────────────────────────────
@@ -3310,25 +3371,60 @@ const fmtSess = (start, dur) => {
 };
 
 // ── Student Schedule Modal ────────────────────────────────────────────────────
+// ── Searchable student picker helpers ────────────────────────────────────────
+const filterStudentSchedDropdown = () => {
+  const q = (document.getElementById('stu-sched-student-search').value||'').toLowerCase().trim();
+  const dd = document.getElementById('stu-sched-student-dropdown');
+  const sorted = [...students].sort((a,b)=>a.name.localeCompare(b.name));
+  const filtered = q ? sorted.filter(s=>s.name.toLowerCase().includes(q)) : sorted;
+  if (!filtered.length) {
+    dd.innerHTML = '<div style="padding:10px 14px;color:var(--muted);font-size:13px">No students found</div>';
+  } else {
+    dd.innerHTML = filtered.map(s=>{
+      const id = s.id;
+      const name = s.name;
+      return '<div style="padding:9px 14px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border)" onmousedown="selectScheduleStudent(this)" data-sid="'+id+'" data-name="'+name.replace(/"/g,'&quot;')+'">'+name+'</div>';
+    }).join('');
+  }
+  dd.style.display = '';
+};
+
+const selectScheduleStudent = (el) => {
+  const sid = el.dataset.sid;
+  const name = el.dataset.name;
+  document.getElementById('stu-sched-student-search').value = name;
+  document.getElementById('stu-sched-student').value = sid;
+  document.getElementById('stu-sched-student-dropdown').style.display = 'none';
+  onScheduleStudentChange();
+};
+
+document.addEventListener('click', e => {
+  const dd = document.getElementById('stu-sched-student-dropdown');
+  const inp = document.getElementById('stu-sched-student-search');
+  if (dd && inp && !dd.contains(e.target) && e.target !== inp) dd.style.display = 'none';
+});
+
 const openStudentScheduleModal = (sid=null) => {
-  const sortedStu = [...students].sort((a,b)=>a.name.localeCompare(b.name));
-  document.getElementById('stu-sched-student').innerHTML =
-    '<option value="">Select student...</option>' +
-    sortedStu.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  const searchInp = document.getElementById('stu-sched-student-search');
+  const hiddenInp = document.getElementById('stu-sched-student');
+  const dd = document.getElementById('stu-sched-student-dropdown');
+  if (searchInp) searchInp.value = '';
+  if (hiddenInp) hiddenInp.value = '';
+  if (dd) dd.style.display = 'none';
 
   if (sid) {
-    // editing existing schedule
     const pkg = schedules.find(p=>p.studentId===sid);
     if (!pkg) return;
+    const stu = students.find(s=>s.id===sid);
     document.getElementById('stu-sched-sid').value = sid;
-    document.getElementById('stu-sched-student').value = sid;
+    if (hiddenInp) hiddenInp.value = sid;
+    if (searchInp && stu) searchInp.value = stu.name;
     document.getElementById('stu-sched-subject').value = pkg.subject||'';
     document.getElementById('stu-sched-title').textContent = '✏️ Edit Student Schedule';
     document.getElementById('stu-sched-delete-btn').style.display = 'inline-flex';
     buildDaysSelector(pkg.days);
   } else {
     document.getElementById('stu-sched-sid').value = '';
-    document.getElementById('stu-sched-student').value = '';
     document.getElementById('stu-sched-subject').value = '';
     document.getElementById('stu-sched-default-dur').value = '60';
     document.getElementById('stu-sched-title').textContent = '📅 Student Schedule';
@@ -3336,6 +3432,7 @@ const openStudentScheduleModal = (sid=null) => {
     buildDaysSelector([]);
   }
   document.getElementById('stu-sched-overlay').style.display = 'flex';
+  setTimeout(()=>{ if(searchInp) searchInp.focus(); }, 80);
 };
 
 const onScheduleStudentChange = () => {
@@ -3727,7 +3824,12 @@ const renderTeacherScheduleView = () => {
     document.getElementById('teacher-schedule-list').innerHTML = '<div class="card muted" style="text-align:center;padding:40px">No teachers yet.</div>';
     return;
   }
-  const sorted = [...teachers].sort((a,b)=>a.name.localeCompare(b.name));
+  const searchQ = (document.getElementById('schedule-teacher-search')?.value||'').toLowerCase().trim();
+  const sorted = [...teachers].filter(t=>!searchQ||t.name.toLowerCase().includes(searchQ)).sort((a,b)=>a.name.localeCompare(b.name));
+  if (!sorted.length) {
+    document.getElementById('teacher-schedule-list').innerHTML = '<div class="card muted" style="text-align:center;padding:40px">No teachers match your search.</div>';
+    return;
+  }
   document.getElementById('teacher-schedule-list').innerHTML = sorted.map(t => {
     const c = teacherColorByIdx(t.id);
     // get all students of this teacher who have schedules
