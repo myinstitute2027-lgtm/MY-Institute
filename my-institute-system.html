@@ -3309,10 +3309,14 @@ const renderMySchedule = () => {
   const mySchedules = myStudents.map(s=>({stu:s, pkg:schedules.find(p=>p.studentId===s.id)})).filter(x=>x.pkg);
   if (!mySchedules.length) { el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">No sessions scheduled yet.</div>'; return; }
 
+  const now = new Date();
+  const todayDay = DAYS[now.getDay() === 0 ? 6 : now.getDay() - 1];
+
   const byDay = DAYS.map(day=>{
     const daySess = mySchedules.filter(({pkg})=>pkg.days.find(d=>d.day===day))
       .sort((a,b)=>timeToMins(a.pkg.days.find(d=>d.day===day).start)-timeToMins(b.pkg.days.find(d=>d.day===day).start));
     if (!daySess.length) return '';
+    const isToday = day === todayDay;
     const sessHtml = daySess
       .map(({stu,pkg})=>{
         const d = pkg.days.find(d=>d.day===day);
@@ -3322,8 +3326,11 @@ const renderMySchedule = () => {
           ${pkg.subject?`<span class="badge badge-amber f12">${pkg.subject}</span>`:''}
         </div>`;
       }).join('');
-    return `<div class="card mb12">
-      <div class="bold gold mb12" style="font-size:15px">📅 ${day}</div>
+    return `<div class="card mb12" style="${isToday?'border:2px solid var(--gold);background:#1a1400':''}">
+      <div class="flex items-center gap8 mb12">
+        <div class="bold" style="font-size:15px;color:var(--gold)">📅 ${day}</div>
+        ${isToday?`<span class="badge badge-amber" style="font-size:11px">Today ✨</span>`:''}
+      </div>
       ${sessHtml}
     </div>`;
   }).join('');
@@ -3754,7 +3761,11 @@ const renderConflictBanner = () => {
 };
 
 const renderWeekGrid = () => {
+  const now = new Date();
+  const todayDay = DAYS[now.getDay() === 0 ? 6 : now.getDay() - 1];
+
   const cols = DAYS.map(day => {
+    const isToday = day === todayDay;
     // collect all sessions for this day across all packages
     const daySessions = [];
     schedules.forEach(pkg => {
@@ -3793,8 +3804,10 @@ const renderWeekGrid = () => {
       </div>`;
     }).join('');
 
-    return `<div class="week-col">
-      <div class="week-col-head">${day}</div>
+    return `<div class="week-col" style="${isToday?'border:2px solid var(--gold);border-radius:10px;':''}">
+      <div class="week-col-head" style="${isToday?'color:var(--gold);background:#1a1400;border-radius:8px 8px 0 0;':''}">
+        ${day}${isToday?' ✨':''}
+      </div>
       <div class="week-col-body">${chips||'<div style="color:var(--muted);font-size:11px;text-align:center;padding:12px 0">Free</div>'}</div>
     </div>`;
   }).join('');
@@ -3819,8 +3832,11 @@ const renderStudentScheduleView = () => {
       const c = studentColor(stu.id);
       const daysHtml = DAYS.filter(d=>pkg.days.find(pd=>pd.day===d)).map(day=>{
         const d = pkg.days.find(pd=>pd.day===day);
-        return `<div class="sched-row">
-          <span class="sched-day-badge">${day}</span>
+        const isToday = day === DAYS[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1];
+        return `<div class="sched-row" style="${isToday?'background:#1a1400;border-radius:6px;padding:4px 8px;':''}">
+          <span class="sched-day-badge" style="${isToday?'color:var(--gold);':''}">
+            ${day}${isToday?' ✨':''}
+          </span>
           <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:${c.text}">${fmtSess(d.start,d.dur)}</span>
           ${pkg.subject?`<span class="badge" style="background:${c.bg};border:1px solid ${c.border};color:${c.text};margin-left:4px">${pkg.subject}</span>`:''}
         </div>`;
