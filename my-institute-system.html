@@ -143,6 +143,7 @@ button:hover{opacity:.85}
   <button class="nav-btn" id="nav-mystudents" onclick="showPage('mystudents')" style="display:none">📚 My Students</button>
   <button class="nav-btn" id="nav-myschedule" onclick="showPage('myschedule')" style="display:none">📅 My Schedule</button>
   <button class="nav-btn" id="nav-mysalary" onclick="showPage('mysalary')" style="display:none">💵 My Salary</button>
+  <button class="nav-btn" id="nav-stureports" onclick="showPage('stureports')" style="display:none">📝 My Reports</button>
   <button class="nav-btn" id="nav-mynotifs" onclick="showPage('mynotifs')" style="display:none">🔔 Reminders <span id="notif-badge" style="display:none;background:var(--red);color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 6px;margin-left:4px"></span></button>
   <button class="nav-btn" id="nav-sendnotifs" onclick="showPage('sendnotifs')" style="display:none">📣 Send Reminder</button>
 </div>
@@ -419,8 +420,8 @@ button:hover{opacity:.85}
   <!-- ACCOUNTS (admin only) -->
   <div class="page" id="page-accounts">
     <div class="flex justify-between items-center mb16 flex-wrap gap8">
-      <div class="f18 bold">👥 Teacher Accounts</div>
-      <button class="btn-gold" onclick="openNewAccount()">➕ Add Account</button>
+      <div class="f18 bold">👥 Accounts</div>
+      <div class="flex gap8 flex-wrap"><button class="btn-gold" onclick="openNewAccount()">➕ Teacher Account</button><button class="btn-gold" onclick="openNewStudentAccount()">➕ Student Account</button></div>
     </div>
     <div id="accounts-list"></div>
   </div>
@@ -460,6 +461,12 @@ button:hover{opacity:.85}
       <button class="btn-gold" onclick="addCustomPhrase()">➕ Add Phrase</button>
     </div>
     <div id="phrases-list"></div>
+  </div>
+
+  <!-- STUDENT: REPORTS -->
+  <div class="page" id="page-stureports">
+    <div class="f18 bold mb16">📝 My Monthly Reports</div>
+    <div id="stureports-list"></div>
   </div>
 
   <!-- TEACHER: MY REPORTS -->
@@ -775,6 +782,17 @@ button:hover{opacity:.85}
 </div>
 
 <!-- ACCOUNT MODAL -->
+<div id="sacc-overlay" onclick="closeStudentAccount()" class="overlay-base">
+  <div onclick="event.stopPropagation()" class="modal-base" style="width:420px">
+    <div class="f15 bold gold mb4">➕ Add Student Account</div>
+    <div class="form-group"><label class="label">Student *</label><select id="sacc-student" onchange="onSaccStudent()"></select></div>
+    <div class="form-group"><label class="label">Username *</label><input id="sacc-username" placeholder="e.g. john.smith"/></div>
+    <div class="form-group"><label class="label">Password *</label><input id="sacc-password"/></div>
+    <div id="sacc-error" class="f12 red mb8" style="display:none"></div>
+    <div class="flex gap8 mt8"><button class="btn-gold flex1" onclick="saveStudentAccount()">💾 Create &amp; copy login details</button><button class="btn-ghost" onclick="closeStudentAccount()">Cancel</button></div>
+  </div>
+</div>
+
 <div id="account-overlay" onclick="closeAccountModal()" class="overlay-base">
   <div onclick="event.stopPropagation()" class="modal-base" style="width:420px">
     <div class="f15 bold gold mb4" id="account-modal-title">➕ Add Teacher Account</div>
@@ -998,8 +1016,8 @@ const historyFromDb = r => ({
   key:r.key, label:r.label, archivedAt:r.archived_at, usdRate:r.usd_rate||0,
   totalHours:r.total_hours||0, totalSalary:r.total_salary||0, totalRevenue:r.total_revenue||0, teachers:r.teachers||[]
 });
-const userFromDb = r => ({ id:r.id, username:r.username, password:r.password, role:r.role, teacherId:r.teacher_id||'', displayName:r.display_name, createdAt:r.created_at||'' });
-const userToDb = u => ({ id:u.id, username:u.username, password:u.password, role:u.role, teacher_id:u.teacherId||null, display_name:u.displayName, created_at:u.createdAt||'' });
+const userFromDb = r => ({ id:r.id, username:r.username, password:r.password, role:r.role, teacherId:r.teacher_id||'', studentId:r.student_id||'', displayName:r.display_name, createdAt:r.created_at||'' });
+const userToDb = u => ({ id:u.id, username:u.username, password:u.password, role:u.role, teacher_id:u.teacherId||null, student_id:u.studentId||null, display_name:u.displayName, created_at:u.createdAt||'' });
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 let users = [];           // all user accounts (loaded after login, admin only needs full list)
@@ -1009,6 +1027,8 @@ const SESSION_KEY = 'mit_session';
 
 const isAdmin = () => currentUser && currentUser.role === 'admin';
 const isTeacherRole = () => currentUser && currentUser.role === 'teacher';
+const isStudentRole = () => currentUser && currentUser.role === 'student';
+const _esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 const doLogin = async () => {
   const username = document.getElementById('login-username').value.trim();
@@ -1026,7 +1046,7 @@ const doLogin = async () => {
       return;
     }
     const user = userFromDb(row);
-    currentUser = { id:user.id, username:user.username, role:user.role, teacherId:user.teacherId, displayName:user.displayName };
+    currentUser = { id:user.id, username:user.username, role:user.role, teacherId:user.teacherId, studentId:user.studentId, displayName:user.displayName };
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
     await afterLogin();
   } catch(e) {
@@ -1049,6 +1069,12 @@ const doLogout = () => {
 const applyRoleUI = () => {
   const adminNav = ['nav-dashboard','nav-teachers','nav-students','nav-salary','nav-schedule','nav-history','nav-snapshots','nav-auditlog','nav-backup','nav-attendance','nav-reports','nav-phrases','nav-sendnotifs','nav-accounts'];
   const teacherNav = ['nav-mystudents','nav-myschedule','nav-mysalary','nav-myreports','nav-mynotifs'];
+  if (isStudentRole()) {
+    [...adminNav,...teacherNav].forEach(id=>document.getElementById(id).style.display='none');
+    document.getElementById('nav-stureports').style.display='';
+    document.getElementById('current-user-pill').innerHTML = `👤 <span class="bold">${_esc(currentUser.displayName)}</span> <span class="muted">(Student)</span>`;
+    return;
+  }
   if (isAdmin()) {
     adminNav.forEach(id=>document.getElementById(id).style.display='');
     teacherNav.forEach(id=>document.getElementById(id).style.display='none');
@@ -1064,6 +1090,7 @@ const afterLogin = async () => {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app-shell').style.display = '';
   applyRoleUI();
+  if (isStudentRole()) { document.getElementById('loading-state').style.display='none'; showPage('stureports'); return; }
   await init(); // loads all data, runs monthly reset, calls renderAll()
   if (isAdmin()) refreshBellCount();
   if (isTeacherRole()) refreshNotifBadge();
@@ -1459,6 +1486,8 @@ const ADMIN_ONLY_PAGES = ['dashboard','teachers','students','salary','schedule',
 const TEACHER_ONLY_PAGES = ['mystudents','myschedule','mysalary','mynotifs'];
 
 const showPage = async id => {
+  if (isStudentRole()) id = 'stureports';
+  else if (id === 'stureports') id = isAdmin() ? 'dashboard' : 'mystudents';
   // Defense in depth: block a teacher account from ever rendering an admin page (and vice versa)
   if (isTeacherRole() && ADMIN_ONLY_PAGES.includes(id)) id = 'mystudents';
   if (isAdmin() && TEACHER_ONLY_PAGES.includes(id)) id = 'dashboard';
@@ -1468,6 +1497,7 @@ const showPage = async id => {
   document.getElementById('page-'+id).classList.add('active');
   const navBtn = document.getElementById('nav-'+id);
   if (navBtn) navBtn.classList.add('active');
+  if (id === 'stureports') { loadStudentReports(); return; }
 
   if (id === 'sendnotifs') {
     // Populate teacher dropdown
@@ -4061,7 +4091,8 @@ const loadReports = async (forceRefresh=false) => {
   const done = reportsCache.filter(r=>r.status!=='pending');
 
   const renderReport = r => {
-    const avg = (Object.values(r.grades||{}).reduce((a,v)=>a+(parseFloat(v)||0),0) / (GRADE_KEYS.length||1)).toFixed(1);
+    const _gradeKeys = [...GRADE_KEYS,'exam']; // 6 grades + monthly exam = 7 items, each out of 10
+    const avg = (_gradeKeys.reduce((a,k)=>a+(parseFloat(r.grades?.[k])||0),0) / _gradeKeys.length).toFixed(1);
     const p = r.progress||{};
 
     // Build WhatsApp message
@@ -4314,9 +4345,10 @@ const loadAccounts = async (forceRefresh=false) => {
 
   el.innerHTML = allUsers.map(u=>{
     const t = teachers.find(t=>t.id===u.teacherId);
+    const isStu = u.role==='student';
     const roleBadge = u.role==='admin'
       ? '<span class="badge badge-amber">Admin</span>'
-      : '<span class="badge badge-blue">Teacher</span>';
+      : isStu ? '<span class="badge badge-green">Student</span>' : '<span class="badge badge-blue">Teacher</span>';
     return `<div class="card mb12">
       <div class="flex justify-between items-center flex-wrap gap8">
         <div>
@@ -4325,7 +4357,7 @@ const loadAccounts = async (forceRefresh=false) => {
           <div class="f12 muted mt4">Username: <span class="mono">${u.username}</span>${t?' · '+t.name:''}</div>
         </div>
         <div class="flex gap8">
-          ${u.role!=='admin'?`<button class="btn-ghost" onclick="openEditAccount('${u.id}')">✏️ Edit</button>`:''}
+          ${isStu?`<button class="btn-ghost" onclick="resetStudentPassword('${u.id}')">🔑 Password</button>`:u.role!=='admin'?`<button class="btn-ghost" onclick="openEditAccount('${u.id}')">✏️ Edit</button>`:''}
           ${u.role!=='admin'?`<button class="btn-danger" onclick="deleteAccount('${u.id}','${u.displayName}')">Remove</button>`:''}
         </div>
       </div>
@@ -4422,6 +4454,91 @@ const saveAccount = async () => {
     errEl.textContent = '⚠️ ' + e.message;
     errEl.style.display = 'block';
   }
+};
+
+
+// ── Student portal (reports) ──────────────────────────────────────────────────
+const _pw = () => Array.from(crypto.getRandomValues(new Uint8Array(8)),b=>'abcdefghjkmnpqrstuvwxyz23456789'[b%31]).join('');
+const openNewStudentAccount = () => {
+  const used = new Set(allUsers.filter(u=>u.studentId).map(u=>u.studentId));
+  document.getElementById('sacc-student').innerHTML = '<option value="">Select student...</option>' +
+    students.filter(s=>!used.has(s.id)).sort((a,b)=>a.name.localeCompare(b.name)).map(s=>`<option value="${s.id}">${_esc(s.name)}</option>`).join('');
+  document.getElementById('sacc-username').value = '';
+  document.getElementById('sacc-password').value = _pw();
+  document.getElementById('sacc-error').style.display = 'none';
+  document.getElementById('sacc-overlay').classList.add('open');
+};
+const closeStudentAccount = () => document.getElementById('sacc-overlay').classList.remove('open');
+const onSaccStudent = () => {
+  const s = students.find(x=>x.id===document.getElementById('sacc-student').value);
+  if (s) document.getElementById('sacc-username').value = s.name.toLowerCase().replace(/[^a-z0-9]+/g,'.').replace(/^\.|\.$/g,'');
+};
+const saveStudentAccount = async () => {
+  const errEl = document.getElementById('sacc-error');
+  const stu = students.find(x=>x.id===document.getElementById('sacc-student').value);
+  const username = document.getElementById('sacc-username').value.trim();
+  const password = document.getElementById('sacc-password').value.trim();
+  const fail = m => { errEl.textContent=m; errEl.style.display='block'; };
+  if (!stu) return fail('Select a student');
+  if (!username) return fail('Enter a username');
+  if (password.length < 6) return fail('Password must be at least 6 characters');
+  if (allUsers.some(u=>u.username.toLowerCase()===username.toLowerCase())) return fail('This username is already taken');
+  try {
+    await sbFetch('users', { method:'POST', body: JSON.stringify([{
+      id:'u_'+uid(), username, password, role:'student', teacher_id:null, student_id:stu.id,
+      display_name:stu.name, created_at:new Date().toISOString() }]) });
+    try { await navigator.clipboard.writeText(`Username: ${username}\nPassword: ${password}`); } catch(_) {}
+    notify(`✅ Account created for ${stu.name} — login details copied`);
+    logAction('Created student account', `${stu.name} / ${username}`);
+    closeStudentAccount();
+    await loadAccounts(true);
+  } catch(e) { fail('⚠️ ' + e.message); }
+};
+const resetStudentPassword = async id => {
+  const u = allUsers.find(x=>x.id===id); if (!u) return;
+  const pw = prompt(`New password for ${u.displayName}:`, _pw());
+  if (!pw || pw.trim().length < 6) return;
+  try {
+    await sbFetch(`users?id=eq.${id}`, { method:'PATCH', headers:{'Prefer':'return=minimal'}, body: JSON.stringify({ password: pw.trim() }) });
+    try { await navigator.clipboard.writeText(`Username: ${u.username}\nPassword: ${pw.trim()}`); } catch(_) {}
+    notify('✅ Password updated — login details copied');
+    logAction('Reset student password', u.displayName);
+  } catch(e) { notify('⚠️ ' + e.message, false); }
+};
+
+// Student view: only THEIR reports, and only those the admin has approved
+const loadStudentReports = async () => {
+  const el = document.getElementById('stureports-list');
+  el.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">Loading…</div>';
+  try {
+    const rows = await sbFetch(`monthly_reports?student_id=eq.${encodeURIComponent(currentUser.studentId)}&status=eq.approved&order=created_at.desc&select=*`);
+    if (!rows || !rows.length) { el.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">No reports yet. Your monthly report will appear here once it is ready.</div>'; return; }
+    const keys = [...GRADE_KEYS,'exam'];
+    const label = k => k==='exam' ? 'Monthly Exam' : k.charAt(0).toUpperCase()+k.slice(1);
+    el.innerHTML = rows.map(r => {
+      const g = r.grades||{}, p = r.progress||{};
+      const avg = (keys.reduce((a,k)=>a+(parseFloat(g[k])||0),0)/keys.length).toFixed(1);
+      return `<div class="card mb12">
+        <div class="flex justify-between items-center flex-wrap gap8 mb12">
+          <div><span class="bold f15">${_esc(r.month_label)}</span> <span class="badge badge-blue f12" style="margin-left:8px">${_esc(r.teacher_name)}</span></div>
+          <span class="badge badge-amber">Average: ${avg}/10</span>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:10px;margin-bottom:10px">
+          <div class="f12 muted mb6">📈 Progress</div>
+          ${p.quran?`<div class="f13">📖 Quran: ${_esc(p.quran.fromSurah)} ${_esc(p.quran.fromVerse)} → ${_esc(p.quran.toSurah)} ${_esc(p.quran.toVerse)}${p.quran.tajweed?` | Tajweed: ${_esc(p.quran.tajweed)}`:''}</div>`:''}
+          ${p.arabic?`<div class="f13">🌍 Arabic: ${_esc(p.arabic.from)} → ${_esc(p.arabic.to)}</div>`:''}
+          ${p.islamic?`<div class="f13">☪️ Islamic Studies: ${_esc(p.islamic.from)} → ${_esc(p.islamic.to)}</div>`:''}
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:10px">
+          <div class="f12 muted mb6">📊 Grades</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px">
+            ${keys.map(k=>`<div class="f13"><span class="muted">${label(k)}:</span> <span class="bold">${g[k]||0}/10</span></div>`).join('')}
+          </div>
+        </div>
+        ${p.comment?`<div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px"><div class="f12 muted mb6">📝 Teacher's Comment</div><div class="f13">${_esc(p.comment)}</div></div>`:''}
+      </div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = `<div class="card" style="text-align:center;padding:40px;color:var(--red)">⚠️ ${_esc(e.message)}</div>`; }
 };
 
 const deleteAccount = async (uid, name) => {
