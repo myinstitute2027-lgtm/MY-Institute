@@ -3223,7 +3223,7 @@ const renderTrialAlert = () => {
   const el = document.getElementById('trial-alert');
   if (!el || !currentUser) return;
   const now = new Date();
-  const todayDay = DAYS[now.getDay() === 0 ? 6 : now.getDay() - 1] || now.toLocaleDateString('en-GB',{weekday:'long'});
+  const todayDay = DAYS[[1,2,3,4,5,6,0][now.getDay()]] || now.toLocaleDateString('en-GB',{weekday:'long'});
   const myStudents = students.filter(s => s.teacherId === currentUser.teacherId && s.isTrial);
   if (!myStudents.length) { el.innerHTML = ''; return; }
 
@@ -3310,7 +3310,7 @@ const renderMySchedule = () => {
   if (!mySchedules.length) { el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">No sessions scheduled yet.</div>'; return; }
 
   const now = new Date();
-  const todayDay = DAYS[now.getDay() === 0 ? 6 : now.getDay() - 1];
+  const todayDay = DAYS[[1,2,3,4,5,6,0][now.getDay()]];
 
   const byDay = DAYS.map(day=>{
     const daySess = mySchedules.filter(({pkg})=>pkg.days.find(d=>d.day===day))
@@ -3324,6 +3324,7 @@ const renderMySchedule = () => {
           <span class="mono f13" style="min-width:130px">${fmtSess(d.start,d.dur)}</span>
           <span class="badge badge-blue">${stu.name}</span>
           ${pkg.subject?`<span class="badge badge-amber f12">${pkg.subject}</span>`:''}
+          ${((stu.hoursBought||0)-(stu.hoursUsed||0))<=0?`<span class="badge badge-red f12">⛔ No hours</span>`:''}
         </div>`;
       }).join('');
     return `<div class="card mb12" style="${isToday?'border:2px solid var(--gold);background:#1a1400':''}">
@@ -3762,7 +3763,7 @@ const renderConflictBanner = () => {
 
 const renderWeekGrid = () => {
   const now = new Date();
-  const todayDay = DAYS[now.getDay() === 0 ? 6 : now.getDay() - 1];
+  const todayDay = DAYS[[1,2,3,4,5,6,0][now.getDay()]];
 
   const cols = DAYS.map(day => {
     const isToday = day === todayDay;
@@ -3793,9 +3794,12 @@ const renderWeekGrid = () => {
       const c = studentColor(pkg.studentId);
       const isConflict = conflictSids.has(pkg.studentId);
       const endStr = minsToTime(timeToMins(d.start)+(d.dur||60));
-      return `<div class="session-chip" style="background:${c.bg};border-color:${isConflict?'var(--red)':c.border};color:${c.text};${isConflict?'box-shadow:0 0 0 1px var(--red)':''}"
+      const remaining = stu ? (stu.hoursBought||0)-(stu.hoursUsed||0) : null;
+      const isZero = remaining !== null && remaining <= 0;
+      return `<div class="session-chip" style="background:${isZero?'var(--red-bg)':c.bg};border-color:${isConflict?'var(--red)':isZero?'var(--red)':c.border};color:${isZero?'var(--red)':c.text};${isConflict?'box-shadow:0 0 0 1px var(--red)':isZero?'box-shadow:0 0 0 1px var(--red)':''}"
         onclick="openEditSess('${pkg.studentId}','${day}')">
         ${isConflict?'<div style="font-size:10px;color:var(--red);font-weight:700;margin-bottom:3px">⚠️ CONFLICT</div>':''}
+        ${isZero?'<div style="font-size:10px;color:var(--red);font-weight:700;margin-bottom:3px">⛔ No hours left</div>':''}
         <div class="chip-name">${stu?.name||'—'}</div>
         <div class="chip-time">${fmt12(d.start)} – ${fmt12(endStr)}</div>
         <div style="font-size:10px;opacity:.65;margin-top:1px">${durLabel(d.dur||60)}</div>
@@ -3832,7 +3836,7 @@ const renderStudentScheduleView = () => {
       const c = studentColor(stu.id);
       const daysHtml = DAYS.filter(d=>pkg.days.find(pd=>pd.day===d)).map(day=>{
         const d = pkg.days.find(pd=>pd.day===day);
-        const isToday = day === DAYS[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1];
+        const isToday = day === DAYS[[1,2,3,4,5,6,0][new Date().getDay()]];
         return `<div class="sched-row" style="${isToday?'background:#1a1400;border-radius:6px;padding:4px 8px;':''}">
           <span class="sched-day-badge" style="${isToday?'color:var(--gold);':''}">
             ${day}${isToday?' ✨':''}
@@ -3841,11 +3845,14 @@ const renderStudentScheduleView = () => {
           ${pkg.subject?`<span class="badge" style="background:${c.bg};border:1px solid ${c.border};color:${c.text};margin-left:4px">${pkg.subject}</span>`:''}
         </div>`;
       }).join('');
-      html += `<div class="card teacher-schedule-card" style="border-left:3px solid ${c.text}">
+      const remaining = (stu.hoursBought||0)-(stu.hoursUsed||0);
+      const isZero = remaining <= 0;
+      html += `<div class="card teacher-schedule-card" style="border-left:3px solid ${isZero?'var(--red)':c.text}${isZero?';background:var(--red-bg)':''}">
         <div class="flex justify-between items-center mb8 flex-wrap gap8">
           <div>
-            <div class="bold f15" style="color:${c.text}">${stu.name}</div>
+            <div class="bold f15" style="color:${isZero?'var(--red)':c.text}">${stu.name}${isZero?' ⛔':''}</div>
             ${teacher?`<div class="f12 muted mt4">👨‍🏫 ${teacher.name}</div>`:''}
+            ${isZero?`<div class="f12 mt4" style="color:var(--red);font-weight:600">No hours remaining — needs top up</div>`:''}
           </div>
           <div class="flex gap8 items-center flex-wrap">
             <span class="badge" style="background:${c.bg};border:1px solid ${c.border};color:${c.text}">${pkg.days.length} day${pkg.days.length!==1?'s':''}/week</span>
