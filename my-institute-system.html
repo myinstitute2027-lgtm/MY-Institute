@@ -81,6 +81,28 @@ button:hover{opacity:.85}
 .modal-base{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;width:440px;max-width:93vw;max-height:90vh;overflow-y:auto}
 .overlay-base{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center}
 .overlay-base.open{display:flex}
+
+/* ── Monthly report cards (teacher) ── */
+.rp-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:12px;overflow:hidden}
+.rp-card.sent{border-color:var(--green-border)}
+.rp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 18px;cursor:pointer;flex-wrap:wrap}
+.rp-head:hover{background:rgba(255,255,255,.02)}
+.rp-body{display:none;padding:4px 18px 18px;border-top:1px solid var(--border)}
+.rp-card.open .rp-body{display:block}
+.rp-check{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--green);color:#06210f;font-size:14px;font-weight:700;margin-inline-end:8px}
+.rp-check.empty{background:transparent;border:1px dashed var(--muted);color:transparent}
+.rp-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.rp-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.rp-bad{border-color:var(--red)!important;background:var(--red-bg)!important}
+.rp-sec{font-size:13px;font-weight:700;color:var(--gold);margin:16px 0 8px}
+.rp-subj{display:none;margin-bottom:8px}
+.rp-subj.show{display:block}
+@media(max-width:560px){.rp-grid,.rp-grid3{grid-template-columns:1fr 1fr}}
+/* ── Homework builder ── */
+.hw-q{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px}
+.hw-opt-row{display:flex;gap:6px;align-items:center;margin-top:6px}
+.hw-opt-row .hw-letter{width:22px;text-align:center;color:var(--gold);font-weight:700;flex-shrink:0}
+.hw-x{background:transparent;border:1px solid var(--border);color:var(--muted);padding:4px 9px;font-size:12px}
 </style>
 </head>
 <body>
@@ -471,13 +493,16 @@ button:hover{opacity:.85}
 
   <!-- TEACHER: MY REPORTS -->
   <div class="page" id="page-myreports">
-    <div class="f18 bold mb16">📝 Monthly Reports</div>
+    <div class="flex justify-between items-center flex-wrap gap8 mb16">
+      <div>
+        <div class="f18 bold">📝 Monthly Reports</div>
+        <div class="f12 muted" id="myreports-month"></div>
+      </div>
+      <div id="myreports-counter"></div>
+    </div>
     <div id="report-reminder" class="card mb16" style="display:none;border-color:var(--gold);background:#1a1400">
       <div class="bold gold">📅 Time to submit monthly reports!</div>
       <div class="f12 muted mt4">It's past the 25th — please submit reports for all your students.</div>
-    </div>
-    <div class="flex gap8 mb16 flex-wrap">
-      <button class="btn-gold" onclick="openNewReport()">➕ New Report</button>
     </div>
     <div id="myreports-list"></div>
   </div>
@@ -718,69 +743,6 @@ button:hover{opacity:.85}
 
 <div id="toast"></div>
 
-<!-- NEW REPORT MODAL (teacher) -->
-<div id="report-overlay" onclick="closeReportModal()" class="overlay-base">
-  <div onclick="event.stopPropagation()" class="modal-base" style="width:560px">
-    <div class="f15 bold gold mb4">📝 Monthly Report</div>
-    <div class="f12 muted mb16" id="report-month-label"></div>
-    <input type="hidden" id="report-id"/>
-
-    <!-- Student -->
-    <div class="form-group">
-      <label class="label">Student *</label>
-      <select id="report-student" onchange="onReportStudentChange()">
-        <option value="">Select student...</option>
-      </select>
-    </div>
-
-    <!-- Subjects -->
-    <div class="form-group">
-      <label class="label">Subjects *</label>
-      <div class="flex gap12" style="flex-wrap:wrap;padding:8px 0">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px">
-          <input type="checkbox" id="subj-quran" style="width:auto;accent-color:var(--gold)"/> Quran
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px">
-          <input type="checkbox" id="subj-arabic" style="width:auto;accent-color:var(--gold)"/> Arabic
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px">
-          <input type="checkbox" id="subj-islamic" style="width:auto;accent-color:var(--gold)"/> Islamic Studies
-        </label>
-      </div>
-    </div>
-
-    <!-- Progress per subject -->
-    <div id="report-progress-section"></div>
-
-    <!-- Grades -->
-    <div class="f13 bold mb8 mt8" style="color:var(--gold)">📊 Grades (out of 10)</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-      <div class="form-group" style="margin:0"><label class="label">Attendance</label><input id="grade-attendance" type="number" min="0" max="10" step="0.5" placeholder="0-10"/></div>
-      <div class="form-group" style="margin:0"><label class="label">Homework</label><input id="grade-homework" type="number" min="0" max="10" step="0.5" placeholder="0-10"/></div>
-      <div class="form-group" style="margin:0"><label class="label">Interaction</label><input id="grade-interaction" type="number" min="0" max="10" step="0.5" placeholder="0-10"/></div>
-      <div class="form-group" style="margin:0"><label class="label">Behaviour</label><input id="grade-behaviour" type="number" min="0" max="10" step="0.5" placeholder="0-10"/></div>
-      <div class="form-group" style="margin:0"><label class="label">Comprehension</label><input id="grade-comprehension" type="number" min="0" max="10" step="0.5" placeholder="0-10"/></div>
-      <div class="form-group" style="margin:0"><label class="label">Participation</label><input id="grade-participation" type="number" min="0" max="10" step="0.5" placeholder="0-10"/></div>
-    </div>
-    <div class="form-group">
-      <label class="label">Monthly Exam Grade (out of 10)</label>
-      <input id="grade-exam" type="number" min="0" max="10" step="0.5" placeholder="0-10"/>
-    </div>
-
-    <!-- Teacher comment -->
-    <div class="form-group">
-      <label class="label">Teacher's Comment</label>
-      <textarea id="report-comment" placeholder="Write your comments about the student's progress this month..." style="min-height:90px;resize:vertical"></textarea>
-    </div>
-
-    <div id="report-error" class="f12 red mb8" style="display:none"></div>
-    <div class="flex gap8 mt12">
-      <button class="btn-gold flex1" onclick="submitReport()">📤 Submit for Review</button>
-      <button class="btn-ghost" onclick="closeReportModal()">Cancel</button>
-    </div>
-  </div>
-</div>
-
 <!-- ACCOUNT MODAL -->
 <div id="sacc-overlay" onclick="closeStudentAccount()" class="overlay-base">
   <div onclick="event.stopPropagation()" class="modal-base" style="width:420px">
@@ -854,7 +816,7 @@ button:hover{opacity:.85}
 
 <!-- ATTENDANCE LOG MODAL - outside app-shell to avoid display:none blocking -->
 <div id="attendance-overlay" onclick="closeAttendanceModal()" class="overlay-base">
-  <div onclick="event.stopPropagation()" class="modal-base" style="width:400px">
+  <div onclick="event.stopPropagation()" class="modal-base" style="width:520px">
     <div class="f15 bold gold mb4">✅ Log Attendance</div>
     <div class="f13 bold mb16" id="attendance-student-name-display"></div>
     <input type="hidden" id="attendance-sid"/>
@@ -870,8 +832,16 @@ button:hover{opacity:.85}
       </select>
     </div>
     <div class="form-group">
-      <label class="label">Homework * <span class="muted f12">(required)</span></label>
-      <textarea id="attendance-homework" placeholder="e.g. Review Surah Al-Baqarah verses 1-5..." style="min-height:80px;resize:vertical"></textarea>
+      <label class="label">Homework * <span class="muted f12">(write a description and/or add questions)</span></label>
+      <textarea id="attendance-homework" placeholder="e.g. Review Surah Al-Baqarah verses 1-5..." style="min-height:70px;resize:vertical"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="label">Homework questions <span class="muted f12">(optional — add as many as you like)</span></label>
+      <div id="hw-builder"></div>
+      <div class="flex gap8 flex-wrap">
+        <button type="button" class="btn-ghost" style="border-color:var(--gold);color:var(--gold)" onclick="hwAdd('essay')">➕ Essay question</button>
+        <button type="button" class="btn-ghost" style="border-color:var(--gold);color:var(--gold)" onclick="hwAdd('mcq')">➕ Multiple choice</button>
+      </div>
     </div>
     <div class="form-group">
       <label class="label">Note <span class="muted f12">(optional)</span></label>
@@ -2785,6 +2755,7 @@ const openAttendanceModal = (sid, name) => {
   document.getElementById('attendance-homework').value = '';
   document.getElementById('attendance-note').value = '';
   document.getElementById('attendance-error').style.display = 'none';
+  hwQuestions = []; hwRender();
   document.getElementById('attendance-overlay').classList.add('open');
 };
 const closeAttendanceModal = () => {
@@ -2793,20 +2764,79 @@ const closeAttendanceModal = () => {
 
 const todayDateKey = () => new Date().toISOString().slice(0,10);
 
+// ── Homework builder (essay / multiple-choice questions) ─────────────────────
+let hwQuestions = [];
+const HW_LETTERS = 'ABCDEFGH';
+const hwSync = () => {
+  document.querySelectorAll('#hw-builder .hw-q').forEach((el,i) => {
+    if (!hwQuestions[i]) return;
+    hwQuestions[i].q = el.querySelector('.hw-qtext').value;
+    if (hwQuestions[i].type === 'mcq') hwQuestions[i].opts = [...el.querySelectorAll('.hw-opt')].map(x=>x.value);
+  });
+};
+const hwAdd = type => { hwSync(); hwQuestions.push({type, q:'', opts: type==='mcq' ? ['',''] : []}); hwRender(); };
+const hwRemove = i => { hwSync(); hwQuestions.splice(i,1); hwRender(); };
+const hwAddOpt = i => { hwSync(); if (hwQuestions[i].opts.length < 8) { hwQuestions[i].opts.push(''); hwRender(); } };
+const hwRemoveOpt = (i,j) => { hwSync(); if (hwQuestions[i].opts.length > 2) { hwQuestions[i].opts.splice(j,1); hwRender(); } };
+const hwRender = () => {
+  const el = document.getElementById('hw-builder');
+  if (!el) return;
+  el.innerHTML = hwQuestions.map((q,i) => `
+    <div class="hw-q">
+      <div class="flex justify-between items-center mb8">
+        <span class="badge ${q.type==='mcq'?'badge-blue':'badge-amber'}">Q${i+1} · ${q.type==='mcq'?'Multiple choice':'Essay'}</span>
+        <button type="button" class="hw-x" onclick="hwRemove(${i})">✕ Remove</button>
+      </div>
+      <textarea class="hw-qtext" placeholder="Write the question..." style="min-height:56px;resize:vertical">${_esc(q.q)}</textarea>
+      ${q.type==='mcq' ? `
+        ${q.opts.map((o,j)=>`<div class="hw-opt-row">
+          <span class="hw-letter">${HW_LETTERS[j]}</span>
+          <input class="hw-opt" value="${_esc(o)}" placeholder="Choice ${HW_LETTERS[j]}"/>
+          ${q.opts.length>2?`<button type="button" class="hw-x" onclick="hwRemoveOpt(${i},${j})">✕</button>`:''}
+        </div>`).join('')}
+        ${q.opts.length<8?`<button type="button" class="hw-x mt8" onclick="hwAddOpt(${i})">➕ Add choice</button>`:''}
+      ` : ''}
+    </div>`).join('');
+};
+// Turns the description + questions into one readable text block (stored in the
+// existing attendance_log.note column, so no database change is needed and the
+// WhatsApp message / admin view keep working).
+const hwBuildText = () => {
+  hwSync();
+  const parts = [];
+  const desc = document.getElementById('attendance-homework').value.trim();
+  if (desc) parts.push(desc);
+  for (let i = 0; i < hwQuestions.length; i++) {
+    const q = hwQuestions[i];
+    const text = (q.q||'').trim();
+    if (!text) return { error: `Question ${i+1} is empty — write it or remove it.` };
+    if (q.type === 'mcq') {
+      const opts = q.opts.map(o=>o.trim()).filter(Boolean);
+      if (opts.length < 2) return { error: `Question ${i+1} needs at least 2 choices.` };
+      parts.push(`Q${i+1}) ${text}\n` + opts.map((o,j)=>`   ${HW_LETTERS[j]}) ${o}`).join('\n'));
+    } else {
+      parts.push(`Q${i+1}) ${text}\n   ✍️ (essay answer)`);
+    }
+  }
+  if (!parts.length) return { error: 'Homework is required — write a description or add a question.' };
+  return { text: parts.join('\n\n').replace(/ \| Note: /g, ' - Note: ') };
+};
+
 const submitAttendance = async () => {
   const sid = document.getElementById('attendance-sid').value;
   const hours = parseFloat(document.getElementById('attendance-hours').value);
-  const homework = document.getElementById('attendance-homework').value.trim();
   const note = document.getElementById('attendance-note').value.trim();
   const errEl = document.getElementById('attendance-error');
   errEl.style.display = 'none';
 
-  // Homework is required
-  if (!homework) {
-    errEl.textContent = '⚠️ Homework is required before submitting.';
+  // Homework is required (description and/or questions)
+  const hwRes = hwBuildText();
+  if (hwRes.error) {
+    errEl.textContent = '⚠️ ' + hwRes.error;
     errEl.style.display = 'block';
     return;
   }
+  const homework = hwRes.text;
 
   const stu = students.find(s => s.id === sid);
   if (!stu) return;
@@ -3008,7 +3038,7 @@ const loadAttendance = async (forceRefresh=false) => {
       </div>
       ${homework ? `<div style="background:var(--bg);border-left:3px solid var(--gold);padding:8px 12px;border-radius:6px;width:100%;box-sizing:border-box">
         <div class="f12 muted mb4">📚 Homework</div>
-        <div class="f13">${homework}</div>
+        <div class="f13" style="white-space:pre-wrap">${_esc(homework)}</div>
         ${sideNote ? `<div class="f12 muted mt4">💬 ${sideNote}</div>` : ''}
         ${remaining !== null ? `<div class="f12 mt4" style="color:${remaining<0?'var(--red)':remaining<=1?'var(--red)':remaining<=3?'var(--gold)':'var(--green)'}">⏳ ${remaining<0?'⚠️ '+Math.abs(remaining)+'h owed (balance overdrawn)':remaining+'h remaining'}</div>` : ''}
         <textarea id="${msgId}_text" style="display:none">${combinedMsg}</textarea>
@@ -3935,165 +3965,247 @@ const checkReportReminder = () => {
   el.style.display = new Date().getDate() >= 25 ? '' : 'none';
 };
 
-// ── Teacher: open new report modal ────────────────────────────────────────────
-const openNewReport = (reportId=null) => {
-  document.getElementById('report-id').value = reportId||'';
-  document.getElementById('report-month-label').textContent = currentMonthLabel();
-  document.getElementById('report-error').style.display = 'none';
+// ── Teacher: all students listed together, one inline report each ───────────
+let myReportsByStudent = {};   // studentId -> report row for the current month
+let myOldReports = [];
+const RP_OPEN = new Set();     // which student cards are expanded
+const RP_GRADE_LABELS = {attendance:'Attendance',homework:'Homework',interaction:'Interaction',behaviour:'Behaviour',comprehension:'Comprehension',participation:'Participation',exam:'Monthly Exam'};
+const rpEl = (sid,k) => document.getElementById(`rp-${sid}-${k}`);
 
-  // Populate student select (teacher's students only)
-  const myStudents = students.filter(s=>s.teacherId===currentUser.teacherId).sort((a,b)=>a.name.localeCompare(b.name));
-  document.getElementById('report-student').innerHTML =
-    '<option value="">Select student...</option>' +
-    myStudents.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+const rpStatusBadge = r => !r
+  ? '<span class="badge badge-red">Not sent</span>'
+  : r.status==='approved' ? '<span class="badge badge-green">✔ Approved</span>'
+  : r.status==='rejected' ? '<span class="badge badge-red">❌ Needs revision</span>'
+  : '<span class="badge badge-green">✔ Sent · awaiting review</span>';
 
-  // Reset subjects and grades
-  SUBJECTS.forEach(s=>document.getElementById('subj-'+s.id).checked=false);
-  GRADE_KEYS.forEach(k=>document.getElementById('grade-'+k).value='');
-  document.getElementById('grade-exam').value='';
-  document.getElementById('report-comment').value='';
-  document.getElementById('report-progress-section').innerHTML='';
+const rpInput = (sid,k,val,ph,extra='') => `<input id="rp-${sid}-${k}" data-rp="1" value="${_esc(val)}" placeholder="${_esc(ph)}" ${extra}/>`;
+const rpGrade = (sid,k,val) => `<div class="form-group" style="margin:0"><label class="label">${RP_GRADE_LABELS[k]}</label>
+  <input id="rp-${sid}-g-${k}" data-rp="1" type="number" min="0" max="10" step="0.5" placeholder="0-10" value="${val===undefined||val===null?'':_esc(val)}"/></div>`;
 
-  document.getElementById('report-overlay').classList.add('open');
+const rpFormHTML = (stu, r) => {
+  const sid = stu.id, p = r?.progress||{}, g = r?.grades||{}, subs = r?.subjects||[];
+  const q = p.quran||{}, ar = p.arabic||{}, is = p.islamic||{};
+  const chk = id => subs.includes(id) ? 'checked' : '';
+  const show = id => subs.includes(id) ? 'show' : '';
+  const sent = !!r;
+  return `
+    <div class="rp-sec">Subjects *</div>
+    <div class="flex gap16 flex-wrap" style="padding:2px 0 6px">
+      ${SUBJECTS.map(s=>`<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px">
+        <input type="checkbox" id="rp-${sid}-subj-${s.id}" data-rp="1" style="width:auto;accent-color:var(--gold)" ${chk(s.id)}/> ${s.label}</label>`).join('')}
+    </div>
+
+    <div class="rp-subj ${show('quran')}" id="rp-${sid}-box-quran">
+      <div class="card" style="padding:12px">
+        <div class="bold f13 mb8">📖 Quran</div>
+        <div class="rp-grid">
+          <div class="form-group" style="margin:0"><label class="label">From Surah</label>${rpInput(sid,'q-from-surah',q.fromSurah,'e.g. Al-Baqarah')}</div>
+          <div class="form-group" style="margin:0"><label class="label">From Verse</label>${rpInput(sid,'q-from-verse',q.fromVerse,'e.g. 1')}</div>
+          <div class="form-group" style="margin:0"><label class="label">To Surah</label>${rpInput(sid,'q-to-surah',q.toSurah,'e.g. Al-Baqarah')}</div>
+          <div class="form-group" style="margin:0"><label class="label">To Verse</label>${rpInput(sid,'q-to-verse',q.toVerse,'e.g. 20')}</div>
+        </div>
+        <div class="form-group mt8" style="margin-bottom:0"><label class="label">Tajweed covered</label>${rpInput(sid,'q-tajweed',q.tajweed,'e.g. Ghunnah, Idgham...')}</div>
+      </div>
+    </div>
+    <div class="rp-subj ${show('arabic')}" id="rp-${sid}-box-arabic">
+      <div class="card" style="padding:12px">
+        <div class="bold f13 mb8">🌍 Arabic</div>
+        <div class="rp-grid">
+          <div class="form-group" style="margin:0"><label class="label">From</label>${rpInput(sid,'ar-from',ar.from,'e.g. Chapter 3, Lesson 1')}</div>
+          <div class="form-group" style="margin:0"><label class="label">To</label>${rpInput(sid,'ar-to',ar.to,'e.g. Chapter 3, Lesson 4')}</div>
+        </div>
+      </div>
+    </div>
+    <div class="rp-subj ${show('islamic')}" id="rp-${sid}-box-islamic">
+      <div class="card" style="padding:12px">
+        <div class="bold f13 mb8">☪️ Islamic Studies</div>
+        <div class="rp-grid">
+          <div class="form-group" style="margin:0"><label class="label">From</label>${rpInput(sid,'is-from',is.from,'e.g. Pillars of Islam - Prayer')}</div>
+          <div class="form-group" style="margin:0"><label class="label">To</label>${rpInput(sid,'is-to',is.to,'e.g. Pillars of Islam - Zakat')}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rp-sec">📊 Grades (out of 10) *</div>
+    <div class="rp-grid3">
+      ${GRADE_KEYS.map(k=>rpGrade(sid,k,g[k])).join('')}
+      ${rpGrade(sid,'exam',g.exam)}
+    </div>
+
+    <div class="rp-sec">Teacher's Comment *</div>
+    <textarea id="rp-${sid}-comment" data-rp="1" placeholder="Write your comments about the student's progress this month..." style="min-height:80px;resize:vertical">${_esc(p.comment||'')}</textarea>
+
+    ${r?.status==='rejected' && r.admin_note ? `<div class="f12 mt12" style="color:var(--red)">💬 Admin note: ${_esc(r.admin_note)}</div>` : ''}
+    ${r?.status==='approved' ? `<div class="f12 muted mt12">ℹ️ This report was approved. If you edit it, it goes back to the admin for re-approval.</div>` : ''}
+
+    <div id="rp-${sid}-msg" class="f12 mt12" style="min-height:16px"></div>
+    <div class="flex gap8 mt8">
+      <button class="btn-gold flex1" id="rp-${sid}-btn" onclick="submitStudentReport('${sid}')" disabled>${sent?'💾 Save changes & resend':'📤 Send to admin'}</button>
+    </div>`;
 };
 
-const closeReportModal = () => document.getElementById('report-overlay').classList.remove('open');
-
-const onReportStudentChange = () => {
-  // Could prefill data based on student in future
+const rpCardHTML = stu => {
+  const r = myReportsByStudent[stu.id];
+  return `<div class="rp-card ${r?'sent':''} ${RP_OPEN.has(stu.id)?'open':''}" id="rp-card-${stu.id}" data-sid="${stu.id}">
+    <div class="rp-head" onclick="toggleReportCard('${stu.id}')">
+      <div class="flex items-center"><span class="rp-check ${r?'':'empty'}">✓</span><span class="bold f15">${_esc(stu.name)}</span></div>
+      <div class="flex items-center gap8">${rpStatusBadge(r)}<span class="muted f12">${RP_OPEN.has(stu.id)?'▲':'▼'}</span></div>
+    </div>
+    <div class="rp-body">${rpFormHTML(stu, r)}</div>
+  </div>`;
 };
 
-const onSubjectChange = () => {
-  const section = document.getElementById('report-progress-section');
-  const selected = SUBJECTS.filter(s=>document.getElementById('subj-'+s.id).checked);
-  if (!selected.length) { section.innerHTML=''; return; }
-
-  section.innerHTML = `<div class="f13 bold mb8" style="color:var(--gold)">📈 Progress This Month</div>` +
-    selected.map(s=>{
-      if (s.id==='quran') return `
-        <div class="card mb8" style="padding:12px">
-          <div class="bold f13 mb8">📖 Quran</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div class="form-group" style="margin:0"><label class="label">From Surah</label><input id="q-from-surah" placeholder="e.g. Al-Baqarah"/></div>
-            <div class="form-group" style="margin:0"><label class="label">From Verse</label><input id="q-from-verse" placeholder="e.g. 1"/></div>
-            <div class="form-group" style="margin:0"><label class="label">To Surah</label><input id="q-to-surah" placeholder="e.g. Al-Baqarah"/></div>
-            <div class="form-group" style="margin:0"><label class="label">To Verse</label><input id="q-to-verse" placeholder="e.g. 20"/></div>
-          </div>
-          <div class="form-group mt8" style="margin-bottom:0"><label class="label">Tajweed covered</label><input id="q-tajweed" placeholder="e.g. Ghunnah, Idgham..."/></div>
-        </div>`;
-      if (s.id==='arabic') return `
-        <div class="card mb8" style="padding:12px">
-          <div class="bold f13 mb8">🌍 Arabic</div>
-          <div class="form-group" style="margin:0"><label class="label">From</label><input id="ar-from" placeholder="e.g. Chapter 3, Lesson 1"/></div>
-          <div class="form-group mt8" style="margin-bottom:0"><label class="label">To</label><input id="ar-to" placeholder="e.g. Chapter 3, Lesson 4"/></div>
-        </div>`;
-      if (s.id==='islamic') return `
-        <div class="card mb8" style="padding:12px">
-          <div class="bold f13 mb8">☪️ Islamic Studies</div>
-          <div class="form-group" style="margin:0"><label class="label">From</label><input id="is-from" placeholder="e.g. Pillars of Islam - Prayer"/></div>
-          <div class="form-group mt8" style="margin-bottom:0"><label class="label">To</label><input id="is-to" placeholder="e.g. Pillars of Islam - Zakat"/></div>
-        </div>`;
-      return '';
-    }).join('');
+const toggleReportCard = sid => {
+  const card = document.getElementById('rp-card-'+sid);
+  if (!card) return;
+  const open = card.classList.toggle('open');
+  open ? RP_OPEN.add(sid) : RP_OPEN.delete(sid);
+  card.querySelector('.rp-head .muted').textContent = open ? '▲' : '▼';
+  if (open) rpValidate(sid, false);
 };
 
-// Wire subject checkboxes
+// Reads the form for a student. Returns { data, missing:[element ids] }.
+const rpCollect = sid => {
+  const val = k => (rpEl(sid,k)?.value||'').trim();
+  const subjects = SUBJECTS.filter(s=>rpEl(sid,'subj-'+s.id)?.checked).map(s=>s.id);
+  const missing = [];
+  if (!subjects.length) missing.push(`rp-${sid}-subj-quran`);
+  const need = k => { if (!val(k)) missing.push(`rp-${sid}-${k}`); return val(k); };
+  const progress = {};
+  if (subjects.includes('quran')) progress.quran = {
+    fromSurah: need('q-from-surah'), fromVerse: need('q-from-verse'),
+    toSurah: need('q-to-surah'), toVerse: need('q-to-verse'), tajweed: need('q-tajweed') };
+  if (subjects.includes('arabic')) progress.arabic = { from: need('ar-from'), to: need('ar-to') };
+  if (subjects.includes('islamic')) progress.islamic = { from: need('is-from'), to: need('is-to') };
+  const grades = {};
+  [...GRADE_KEYS,'exam'].forEach(k => {
+    const raw = val('g-'+k), n = parseFloat(raw);
+    if (raw === '' || isNaN(n) || n < 0 || n > 10) missing.push(`rp-${sid}-g-${k}`);
+    else grades[k] = n;
+  });
+  progress.comment = need('comment');
+  return { data: { subjects, progress, grades }, missing };
+};
+
+// Live validation: enables the send button only when every field is complete.
+const rpValidate = (sid, markFields=false) => {
+  const { missing } = rpCollect(sid);
+  const btn = rpEl(sid,'btn'), msg = rpEl(sid,'msg');
+  if (btn) btn.disabled = missing.length > 0;
+  if (msg) {
+    msg.style.color = 'var(--muted)';
+    msg.textContent = missing.length ? `⚠️ ${missing.length} field${missing.length>1?'s':''} still missing — all fields are required.` : '';
+  }
+  const card = document.getElementById('rp-card-'+sid);
+  if (card) card.querySelectorAll('.rp-bad').forEach(e=>e.classList.remove('rp-bad'));
+  if (markFields) missing.forEach(id => document.getElementById(id)?.classList.add('rp-bad'));
+  return missing.length === 0;
+};
+
+document.addEventListener('input', e => {
+  const t = e.target; if (!t?.dataset?.rp) return;
+  const sid = t.closest('.rp-card')?.dataset.sid; if (sid) rpValidate(sid);
+});
 document.addEventListener('change', e => {
-  if (['subj-quran','subj-arabic','subj-islamic'].includes(e.target.id)) onSubjectChange();
+  const t = e.target; if (!t?.dataset?.rp) return;
+  const sid = t.closest('.rp-card')?.dataset.sid; if (!sid) return;
+  const m = t.id.match(/-subj-(quran|arabic|islamic)$/);
+  if (m) document.getElementById(`rp-${sid}-box-${m[1]}`)?.classList.toggle('show', t.checked);
+  rpValidate(sid);
 });
 
-const submitReport = async () => {
-  const sid = document.getElementById('report-student').value;
-  const errEl = document.getElementById('report-error');
-  errEl.style.display = 'none';
-
-  if (!sid) { errEl.textContent='Select a student'; errEl.style.display='block'; return; }
-  const selectedSubjects = SUBJECTS.filter(s=>document.getElementById('subj-'+s.id).checked).map(s=>s.id);
-  if (!selectedSubjects.length) { errEl.textContent='Select at least one subject'; errEl.style.display='block'; return; }
-
-  const stu = students.find(s=>s.id===sid);
-  const grades = {};
-  GRADE_KEYS.forEach(k=>grades[k]=parseFloat(document.getElementById('grade-'+k).value)||0);
-  grades.exam = parseFloat(document.getElementById('grade-exam').value)||0;
-
-  const progress = {};
-  if (selectedSubjects.includes('quran')) {
-    progress.quran = {
-      fromSurah: document.getElementById('q-from-surah')?.value||'',
-      fromVerse: document.getElementById('q-from-verse')?.value||'',
-      toSurah: document.getElementById('q-to-surah')?.value||'',
-      toVerse: document.getElementById('q-to-verse')?.value||'',
-      tajweed: document.getElementById('q-tajweed')?.value||''
-    };
-  }
-  if (selectedSubjects.includes('arabic')) {
-    progress.arabic = { from: document.getElementById('ar-from')?.value||'', to: document.getElementById('ar-to')?.value||'' };
-  }
-  if (selectedSubjects.includes('islamic')) {
-    progress.islamic = { from: document.getElementById('is-from')?.value||'', to: document.getElementById('is-to')?.value||'' };
-  }
-  // Free-text comment from the teacher (kept separate from the numeric grades object
-  // so it never gets pulled into the average-grade calculation).
-  progress.comment = document.getElementById('report-comment').value.trim();
-
-  const report = {
-    id: uid(),
-    student_id: sid,
-    student_name: stu.name,
-    teacher_id: currentUser.teacherId||null,
-    teacher_name: currentUser.displayName,
-    month_key: currentMonthKey(),
-    month_label: currentMonthLabel(),
-    subjects: selectedSubjects,
-    progress,
-    grades,
-    exam_grade: grades.exam,
-    status: 'pending',
-    admin_note: '',
-    created_at: new Date().toISOString(),
-    reviewed_at: ''
-  };
-
+const submitStudentReport = async sid => {
+  if (!rpValidate(sid, true)) return;
+  const stu = students.find(s=>s.id===sid); if (!stu) return;
+  const { data } = rpCollect(sid);
+  const existing = myReportsByStudent[sid];
+  const btn = rpEl(sid,'btn'), msg = rpEl(sid,'msg');
+  btn.disabled = true;
   try {
-    await sbFetch('monthly_reports', { method:'POST', body: JSON.stringify([report]) });
+    let saved;
+    if (existing) {
+      // Edit: goes back to "pending" so the admin sees the change / re-approves.
+      const patch = {
+        subjects: data.subjects, progress: data.progress, grades: data.grades, exam_grade: data.grades.exam,
+        status: 'pending', admin_note: '', reviewed_at: '', teacher_name: currentUser.displayName
+      };
+      const res = await sbFetch(`monthly_reports?id=eq.${existing.id}`, {
+        method:'PATCH', headers:{'Prefer':'return=representation'}, body: JSON.stringify(patch) });
+      if (!res || !res.length) throw new Error('Database did not confirm the update');
+      saved = res[0];
+    } else {
+      const report = {
+        id: uid(), student_id: sid, student_name: stu.name,
+        teacher_id: currentUser.teacherId||null, teacher_name: currentUser.displayName,
+        month_key: currentMonthKey(), month_label: currentMonthLabel(),
+        subjects: data.subjects, progress: data.progress, grades: data.grades, exam_grade: data.grades.exam,
+        status: 'pending', admin_note: '', created_at: new Date().toISOString(), reviewed_at: ''
+      };
+      await sbFetch('monthly_reports', { method:'POST', body: JSON.stringify([report]) });
+      saved = report;
+    }
+    myReportsByStudent[sid] = saved;
     reportsCache = null;
-    closeReportModal();
-    notify('✅ Report submitted for review');
-    renderAll();
-    logAction('Submitted monthly report', `${stu.name} — ${currentMonthLabel()}`);
+    notify(existing ? '✅ Report updated and sent to admin' : '✅ Report sent to admin');
+    logAction(existing ? 'Edited monthly report' : 'Submitted monthly report', `${stu.name} — ${currentMonthLabel()}`);
+    RP_OPEN.delete(sid);
+    rpRefreshCard(stu); rpUpdateCounter();
   } catch(e) {
-    errEl.textContent = '⚠️ Could not save: '+e.message;
-    errEl.style.display = 'block';
+    btn.disabled = false;
+    msg.style.color = 'var(--red)';
+    msg.textContent = '⚠️ Could not save: ' + e.message;
   }
 };
 
-// ── Teacher: My Reports list ──────────────────────────────────────────────────
+const rpRefreshCard = stu => {
+  const old = document.getElementById('rp-card-'+stu.id);
+  if (!old) return;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = rpCardHTML(stu);
+  old.replaceWith(tmp.firstElementChild);
+};
+
+const rpUpdateCounter = () => {
+  const el = document.getElementById('myreports-counter');
+  if (!el) return;
+  const mine = students.filter(s=>s.teacherId===currentUser.teacherId);
+  const done = mine.filter(s=>myReportsByStudent[s.id]).length;
+  const pct = mine.length ? Math.round(done/mine.length*100) : 0;
+  el.innerHTML = `<div class="f13 bold ${done===mine.length&&mine.length?'green':''}" style="text-align:end">${done} / ${mine.length} sent</div>
+    <div class="progress-bar-bg" style="width:160px"><div class="progress-bar-fill" style="width:${pct}%;background:${done===mine.length?'var(--green)':'var(--gold)'}"></div></div>`;
+};
+
 const renderMyReports = async () => {
   const el = document.getElementById('myreports-list');
   if (!el || !currentUser) return;
   checkReportReminder();
+  document.getElementById('myreports-month').textContent = currentMonthLabel();
+  const mine = students.filter(s=>s.teacherId===currentUser.teacherId).sort((a,b)=>a.name.localeCompare(b.name));
+  if (!mine.length) { el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">You have no students assigned yet.</div>'; rpUpdateCounter(); return; }
   try {
-    const rows = await sbFetch(`monthly_reports?teacher_id=eq.${currentUser.teacherId}&order=created_at.desc&select=*`);
-    if (!rows||!rows.length) { el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">No reports submitted yet.</div>'; return; }
-    el.innerHTML = rows.map(r=>{
-      const statusBadge = r.status==='approved'
-        ? '<span class="badge badge-green">✅ Approved</span>'
-        : r.status==='rejected'
-        ? '<span class="badge badge-red">❌ Needs revision</span>'
-        : '<span class="badge badge-amber">⏳ Pending review</span>';
-      return `<div class="card mb12">
+    const rows = await sbFetch(`monthly_reports?teacher_id=eq.${currentUser.teacherId}&order=created_at.desc&select=*`) || [];
+    const mk = currentMonthKey();
+    myReportsByStudent = {};
+    rows.filter(r=>r.month_key===mk).forEach(r => { if (!myReportsByStudent[r.student_id]) myReportsByStudent[r.student_id] = r; });
+    myOldReports = rows.filter(r=>r.month_key!==mk);
+  } catch(e) { el.innerHTML=`<div class="card muted" style="text-align:center;padding:40px">⚠️ ${_esc(e.message)}</div>`; return; }
+
+  // Not-yet-sent students first, then sent ones (each group alphabetical)
+  const ordered = [...mine.filter(s=>!myReportsByStudent[s.id]), ...mine.filter(s=>myReportsByStudent[s.id])];
+  let html = ordered.map(rpCardHTML).join('');
+  if (myOldReports.length) {
+    html += `<details style="margin-top:16px"><summary class="f13 muted" style="cursor:pointer;padding:8px 0">🗂️ Previous months (${myOldReports.length})</summary><div class="mt8">` +
+      myOldReports.map(r=>`<div class="card mb8" style="padding:12px 16px">
         <div class="flex justify-between items-center flex-wrap gap8">
-          <div>
-            <span class="bold f14">${r.student_name}</span>
-            <span class="muted f12" style="margin-left:8px">${r.month_label}</span>
-          </div>
-          ${statusBadge}
+          <div><span class="bold f14">${_esc(r.student_name)}</span><span class="muted f12" style="margin-inline-start:8px">${_esc(r.month_label)}</span></div>
+          ${r.status==='approved'?'<span class="badge badge-green">✅ Approved</span>':r.status==='rejected'?'<span class="badge badge-red">❌ Needs revision</span>':'<span class="badge badge-amber">⏳ Pending</span>'}
         </div>
-        ${r.progress?.comment ? `<div class="f12 mt8">📝 ${r.progress.comment}</div>` : ''}
-        ${r.admin_note ? `<div class="f12 muted mt8">💬 Admin: ${r.admin_note}</div>` : ''}
-      </div>`;
-    }).join('');
-  } catch(e) { el.innerHTML=`<div class="card muted" style="text-align:center;padding:40px">⚠️ ${e.message}</div>`; }
+        ${r.admin_note?`<div class="f12 muted mt8">💬 Admin: ${_esc(r.admin_note)}</div>`:''}
+      </div>`).join('') + `</div></details>`;
+  }
+  el.innerHTML = html;
+  rpUpdateCounter();
+  ordered.forEach(s => { if (RP_OPEN.has(s.id)) rpValidate(s.id); });
 };
 
 // ── Admin: Reports review ─────────────────────────────────────────────────────
