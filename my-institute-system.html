@@ -78,6 +78,19 @@ button:hover{opacity:.85}
 .rem-add{float:right;margin-left:6px;font-size:11px;padding:0 6px;border-radius:12px;border:1px dashed var(--border);color:var(--muted);cursor:pointer;opacity:0;transition:opacity .15s}
 .session-chip:hover .rem-add,.sched-row:hover .rem-add,.card:hover>.flex .rem-add{opacity:1}
 @media (hover:none){.rem-add{opacity:.7}}
+@keyframes liveGlow{0%,100%{box-shadow:0 0 0 2px #2ee66b,0 0 12px 2px rgba(46,230,107,.5)}50%{box-shadow:0 0 0 2px #2ee66b,0 0 26px 8px rgba(46,230,107,.9)}}
+@keyframes liveDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.25;transform:scale(.65)}}
+.session-chip.live-now{background:linear-gradient(135deg,#0b3a1d,#16702f)!important;border:2px solid #2ee66b!important;color:#eafff1!important;animation:liveGlow 1.6s ease-in-out infinite;transform:scale(1.04);position:relative;z-index:2}
+.sched-row.live-now,.live-row{background:linear-gradient(90deg,rgba(46,230,107,.25),rgba(46,230,107,.05))!important;border-radius:8px;padding:8px 10px!important;border-inline-start:4px solid #2ee66b;box-shadow:0 0 14px rgba(46,230,107,.35)}
+.card.live-card{border:2px solid #2ee66b!important;box-shadow:0 0 18px rgba(46,230,107,.4)}
+.live-badge{display:inline-flex;align-items:center;gap:6px;background:#2ee66b;color:#04200e;font-weight:800;font-size:11px;padding:2px 9px;border-radius:12px;letter-spacing:.4px;white-space:nowrap}
+.live-badge i{width:8px;height:8px;border-radius:50%;background:#d11;display:inline-block;animation:liveDot 1s infinite}
+.live-bar{height:5px;background:rgba(255,255,255,.2);border-radius:3px;overflow:hidden;margin-top:6px}
+.live-bar>div{height:100%;background:#2ee66b;border-radius:3px;transition:width .6s}
+.live-banner{border:2px solid #2ee66b;background:linear-gradient(135deg,#0b2e17,#0e1521);border-radius:14px;padding:14px 18px;box-shadow:0 0 22px rgba(46,230,107,.35)}
+.live-banner .lb-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 0;border-top:1px solid rgba(46,230,107,.25)}
+.live-banner .lb-row:first-of-type{border-top:none}
+@media (prefers-reduced-motion:reduce){.session-chip.live-now,.live-badge i{animation:none}}
 #rem-tip{position:fixed;z-index:10001;display:none;max-width:300px;pointer-events:none;background:#0b111a;border:1px solid var(--gold);border-radius:10px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,.6);font-size:13px;line-height:1.5}
 #rem-tip .rt-item{padding:6px 0;border-bottom:1px solid var(--border)}
 #rem-tip .rt-item:last-child{border-bottom:none;padding-bottom:0}
@@ -384,6 +397,7 @@ button:hover{opacity:.85}
         <button class="btn-gold" onclick="openStudentScheduleModal()">+ Add Student Schedule</button>
       </div>
     </div>
+    <div id="live-now-banner" style="display:none;margin-bottom:14px"></div>
     <div id="srem-banner" style="display:none;margin-bottom:14px"></div>
     <div id="schedule-conflicts-banner" style="display:none;margin-bottom:14px;padding:12px 16px;background:var(--red-bg);border:1px solid var(--red-border);border-radius:10px;color:var(--red);font-size:13px"></div>
     <div id="schedule-week-view"><div id="week-grid"></div></div>
@@ -465,6 +479,7 @@ button:hover{opacity:.85}
   <div class="page" id="page-myschedule">
     <div class="f18 bold mb16">My Schedule</div>
     <div id="trial-alert"></div>
+    <div id="mylive-banner" style="display:none;margin-bottom:14px"></div>
     <div id="myschedule-list"></div>
   </div>
 
@@ -3631,6 +3646,7 @@ const renderMyStudents = async () => {
 const renderMySchedule = () => {
   const el = document.getElementById('myschedule-list');
   if (!el || !currentUser) return;
+  renderLiveBanner();
   const myStudents = students.filter(s=>s.teacherId===currentUser.teacherId && isActiveStudent(s));
   const mySchedules = myStudents.map(s=>({stu:s, pkg:schedules.find(p=>p.studentId===s.id)})).filter(x=>x.pkg);
   if (!mySchedules.length) { el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">No sessions scheduled yet.</div>'; return; }
@@ -3646,7 +3662,9 @@ const renderMySchedule = () => {
     const sessHtml = daySess
       .map(({stu,pkg})=>{
         const d = pkg.days.find(d=>d.day===day);
-        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+        const li = liveInfo(day, d.start, d.dur);
+        return `<div class="${li?'live-row':''}" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
+          ${liveBadge(li)}
           <span class="mono f13" style="min-width:130px">${fmtSess(d.start,d.dur)}</span>
           <span class="badge badge-blue">${stu.name}</span>
           ${pkg.subject?`<span class="badge badge-amber f12">${pkg.subject}</span>`:''}
@@ -4142,7 +4160,7 @@ const renderSremBanner = () => {
     }).join('');
     tip.style.display = 'block'; place(e);
   });
-  document.addEventListener('mousemove', e => { if (curEl && tip.style.display==='block') place(e); });
+  document.addEventListener('mousemove', e => { if (curEl && !curEl.isConnected) { tip.style.display='none'; curEl = null; return; } if (curEl && tip.style.display==='block') place(e); });
   document.addEventListener('mouseout', e => {
     if (!curEl) return;
     const to = e.relatedTarget;
@@ -4255,6 +4273,73 @@ const deleteSchedReminder = async key => {
   } catch(e) { notify('⚠️ ' + e.message, false); }
 };
 
+
+// ── LIVE NOW: highlight the session that is running right now ─────────────────
+// Works across midnight (a session that started yesterday evening and is still running).
+const liveInfo = (day, start, dur) => {
+  if (!start) return null;
+  const now = new Date();
+  const idx = [1,2,3,4,5,6,0][now.getDay()];
+  const nowM = now.getHours()*60 + now.getMinutes() + now.getSeconds()/60;
+  const len = dur || 60, st = timeToMins(start);
+  let elapsed = null;
+  if (DAYS[idx] === day) elapsed = nowM - st;
+  else if (DAYS[(idx+6)%7] === day) elapsed = nowM + 1440 - st;
+  if (elapsed === null || elapsed < 0 || elapsed >= len) return null;
+  return { left: Math.max(1, Math.ceil(len - elapsed)), pct: Math.round(elapsed/len*100), len };
+};
+const liveBadge = li => li ? `<span class="live-badge"><i></i>LIVE · ${li.left} min left</span>` : '';
+const liveBar = li => li ? `<div class="live-bar"><div style="width:${li.pct}%"></div></div>` : '';
+
+const renderLiveBanner = () => {
+  const admin = isAdmin();
+  const el = document.getElementById(admin ? 'live-now-banner' : 'mylive-banner');
+  if (!el) return;
+  const items = admin
+    ? activeSchedules().map(pkg=>({pkg, stu:students.find(s=>s.id===pkg.studentId)})).filter(x=>x.stu)
+    : students.filter(s=>s.teacherId===currentUser.teacherId && isActiveStudent(s)).map(stu=>({stu, pkg:schedules.find(p=>p.studentId===stu.id)})).filter(x=>x.pkg);
+  const now = new Date();
+  const today = DAYS[[1,2,3,4,5,6,0][now.getDay()]];
+  const nowM = now.getHours()*60 + now.getMinutes();
+  const live = [], upcoming = [];
+  items.forEach(({stu,pkg}) => pkg.days.forEach(d => {
+    const li = liveInfo(d.day, d.start, d.dur);
+    if (li) live.push({stu, pkg, d, li});
+    else if (d.day === today && timeToMins(d.start) > nowM) upcoming.push({stu, pkg, d, inMin: timeToMins(d.start) - nowM});
+  }));
+  live.sort((a,b)=>a.li.left-b.li.left);
+  upcoming.sort((a,b)=>a.inMin-b.inMin);
+  if (!live.length && !upcoming.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'block';
+  if (!live.length) {
+    const u = upcoming[0];
+    el.innerHTML = `<div class="card" style="padding:10px 16px;font-size:13px"><span class="muted">No session running now · next:</span> <span class="bold">${_esc(u.stu.name)}</span> <span class="mono muted">${fmt12(u.d.start)}</span> <span class="badge badge-amber">in ${u.inMin >= 60 ? Math.floor(u.inMin/60)+'h '+(u.inMin%60)+'m' : u.inMin+' min'}</span></div>`;
+    return;
+  }
+  el.innerHTML = `<div class="live-banner">
+    <div class="flex items-center gap8 mb8"><span class="live-badge" style="font-size:13px"><i></i>LIVE NOW</span><span class="bold" style="color:#2ee66b">${live.length} session${live.length!==1?'s':''} running</span></div>
+    ${live.map(({stu,d,li}) => {
+      const t = teachers.find(x=>x.id===stu.teacherId);
+      const end = minsToTime(timeToMins(d.start) + (d.dur||60));
+      return `<div class="lb-row" ${admin?`style="cursor:pointer" onclick="openEditSess('${stu.id}','${d.day}')"`:''}>
+        <div style="flex:1;min-width:150px">
+          <div class="bold" style="font-size:17px">${_esc(stu.name)}</div>
+          <div class="f12 muted">${admin && t ? '👨‍🏫 '+_esc(t.name)+' · ' : ''}${fmt12(d.start)} – ${fmt12(end)}</div>
+        </div>
+        <div style="min-width:140px;flex:1">
+          <div class="f13 bold" style="color:#2ee66b">${li.left} min left</div>
+          ${liveBar(li)}
+        </div>
+      </div>`; }).join('')}
+  </div>`;
+};
+// keep the highlight fresh without a manual refresh
+setInterval(() => {
+  if (!currentUser) return;
+  if (isAdmin() && document.getElementById('page-schedule')?.classList.contains('active')) renderSchedule();
+  else if (isTeacherRole() && document.getElementById('page-myschedule')?.classList.contains('active')) renderMySchedule();
+}, 30000);
+
 const renderSchedule = () => {
   const view = document.getElementById('schedule-view').value;
   document.getElementById('schedule-week-view').style.display   = view==='week'    ? '' : 'none';
@@ -4264,6 +4349,7 @@ const renderSchedule = () => {
   if (view==='student') renderStudentScheduleView();
   if (view==='teacher') renderTeacherScheduleView();
   renderConflictBanner();
+  renderLiveBanner();
   renderSremBanner();
   if (isAdmin() && sremCache === null && !sremLoading) loadSchedReminders();
 };
@@ -4334,10 +4420,12 @@ const renderWeekGrid = () => {
       const endStr = minsToTime(timeToMins(d.start)+(d.dur||60));
       const remaining = stu ? (stu.hoursBought||0)-(stu.hoursUsed||0) : null;
       const isZero = remaining !== null && remaining <= 0;
-      return `<div class="session-chip" style="background:${isZero?'var(--red-bg)':c.bg};border-color:${isConflict?'var(--red)':isZero?'var(--red)':c.border};color:${isZero?'var(--red)':c.text};${isConflict?'box-shadow:0 0 0 1px var(--red)':isZero?'box-shadow:0 0 0 1px var(--red)':''}"
+      const li = liveInfo(day, d.start, d.dur);
+      return `<div class="session-chip${li?' live-now':''}" style="background:${isZero?'var(--red-bg)':c.bg};border-color:${isConflict?'var(--red)':isZero?'var(--red)':c.border};color:${isZero?'var(--red)':c.text};${isConflict?'box-shadow:0 0 0 1px var(--red)':isZero?'box-shadow:0 0 0 1px var(--red)':''}"
         data-rem-sid="${pkg.studentId}" data-rem-day="${day}"
         onclick="openEditSess('${pkg.studentId}','${day}')">
         ${sremBadge(pkg.studentId, day)}
+        ${li?`<div style="margin-bottom:5px">${liveBadge(li)}</div>`:''}
         ${isConflict?'<div style="font-size:10px;color:var(--red);font-weight:700;margin-bottom:3px">⚠️ CONFLICT</div>':''}
         ${isZero?'<div style="font-size:10px;color:var(--red);font-weight:700;margin-bottom:3px">⛔ No hours left</div>':''}
         <div class="chip-name">${stu?.name||'—'}</div>
@@ -4345,6 +4433,7 @@ const renderWeekGrid = () => {
         <div style="font-size:10px;opacity:.65;margin-top:1px">${durLabel(d.dur||60)}</div>
         ${teacher?`<div style="font-size:11px;margin-top:2px;opacity:.7">👨‍🏫 ${teacher.name}</div>`:''}
         ${pkg.subject?`<div style="font-size:11px;margin-top:2px;opacity:.75">${pkg.subject}</div>`:''}
+        ${liveBar(li)}
       </div>`;
     }).join('');
 
@@ -4377,17 +4466,20 @@ const renderStudentScheduleView = () => {
       const daysHtml = DAYS.filter(d=>pkg.days.find(pd=>pd.day===d)).map(day=>{
         const d = pkg.days.find(pd=>pd.day===day);
         const isToday = day === DAYS[[1,2,3,4,5,6,0][new Date().getDay()]];
-        return `<div class="sched-row" style="${isToday?'background:#1a1400;border-radius:6px;padding:4px 8px;':''}">
+        const li = liveInfo(day, d.start, d.dur);
+        return `<div class="sched-row${li?' live-now':''}" style="${isToday?'background:#1a1400;border-radius:6px;padding:4px 8px;':''}">
           <span class="sched-day-badge" style="${isToday?'color:var(--gold);':''}">
             ${day}${isToday?' ✨':''}
           </span>
+          ${liveBadge(li)}
           <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:${c.text}">${fmtSess(d.start,d.dur)}</span>
           ${pkg.subject?`<span class="badge" style="background:${c.bg};border:1px solid ${c.border};color:${c.text};margin-left:4px">${pkg.subject}</span>`:''}
         </div>`;
       }).join('');
       const remaining = (stu.hoursBought||0)-(stu.hoursUsed||0);
       const isZero = remaining <= 0;
-      html += `<div class="card teacher-schedule-card" data-rem-sid="${stu.id}" data-rem-day="" style="border-left:3px solid ${isZero?'var(--red)':c.text}${isZero?';background:var(--red-bg)':''}">
+      const liveAny = pkg.days.some(pd=>liveInfo(pd.day,pd.start,pd.dur));
+      html += `<div class="card teacher-schedule-card${liveAny?' live-card':''}" data-rem-sid="${stu.id}" data-rem-day="" style="border-left:3px solid ${isZero?'var(--red)':c.text}${isZero?';background:var(--red-bg)':''}">
         <div class="flex justify-between items-center mb8 flex-wrap gap8">
           <div>
             <div class="bold f15" style="color:${isZero?'var(--red)':c.text}">${stu.name}${isZero?' ⛔':''}</div>
@@ -4445,8 +4537,10 @@ const renderTeacherScheduleView = () => {
         const otherSess = tSchedules.filter(x=>x.stu.id!==stu.id).map(x=>x.pkg.days.find(pd=>pd.day===day)).filter(Boolean);
         const ds=timeToMins(d.start),de=ds+(d.dur||60);
         const isConflict = otherSess.some(od=>{ const os=timeToMins(od.start),oe=os+(od.dur||60); return ds<oe&&de>os; });
-        return `<div class="sched-row" style="${isConflict?'background:var(--red-bg);border-radius:6px;padding:4px 8px;':''}cursor:pointer" data-rem-sid="${stu.id}" data-rem-day="${day}" onclick="openEditSess('${stu.id}','${day}')">
+        const li = liveInfo(day, d.start, d.dur);
+        return `<div class="sched-row${li?' live-now':''}" style="${isConflict?'background:var(--red-bg);border-radius:6px;padding:4px 8px;':''}cursor:pointer" data-rem-sid="${stu.id}" data-rem-day="${day}" onclick="openEditSess('${stu.id}','${day}')">
           <span class="sched-day-badge">${day}</span>
+          ${liveBadge(li)}
           ${sremBadge(stu.id, day)}
           ${isConflict?'<span style="color:var(--red);font-size:11px;font-weight:700">⚠️</span>':''}
           <span style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:${isConflict?'var(--red)':c.text}">${fmtSess(d.start,d.dur)}</span>
