@@ -72,6 +72,20 @@ button:hover{opacity:.85}
 .session-chip:hover{opacity:.8}
 .session-chip .chip-time{font-size:11px;opacity:.75;font-family:'JetBrains Mono',monospace}
 .session-chip .chip-name{font-weight:700;margin-bottom:2px}
+.session-chip{position:relative}
+.rem-pill{float:right;margin-left:6px;font-size:11px;font-weight:700;padding:1px 7px;border-radius:12px;border:1px solid var(--gold);background:#2d220a;color:var(--gold);cursor:pointer;animation:remPulse 2s infinite}
+@keyframes remPulse{0%,100%{box-shadow:0 0 0 0 rgba(201,168,76,.45)}50%{box-shadow:0 0 0 4px rgba(201,168,76,0)}}
+.rem-add{float:right;margin-left:6px;font-size:11px;padding:0 6px;border-radius:12px;border:1px dashed var(--border);color:var(--muted);cursor:pointer;opacity:0;transition:opacity .15s}
+.session-chip:hover .rem-add,.sched-row:hover .rem-add,.card:hover>.flex .rem-add{opacity:1}
+@media (hover:none){.rem-add{opacity:.7}}
+#rem-tip{position:fixed;z-index:10001;display:none;max-width:300px;pointer-events:none;background:#0b111a;border:1px solid var(--gold);border-radius:10px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,.6);font-size:13px;line-height:1.5}
+#rem-tip .rt-item{padding:6px 0;border-bottom:1px solid var(--border)}
+#rem-tip .rt-item:last-child{border-bottom:none;padding-bottom:0}
+#rem-tip .rt-item:first-of-type{padding-top:0}
+.srem-row{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.srem-row.expired{opacity:.55}
+.srem-quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.srem-quick button{padding:3px 10px;font-size:11px;background:transparent;border:1px solid var(--border);color:var(--muted)}
 .chip-colors{--c1:#1a3a5c;--b1:#2a5a8c;--t1:#58a6ff}
 .schedule-overflow{overflow-x:auto}
 .teacher-schedule-card{margin-bottom:16px}
@@ -370,6 +384,7 @@ button:hover{opacity:.85}
         <button class="btn-gold" onclick="openStudentScheduleModal()">+ Add Student Schedule</button>
       </div>
     </div>
+    <div id="srem-banner" style="display:none;margin-bottom:14px"></div>
     <div id="schedule-conflicts-banner" style="display:none;margin-bottom:14px;padding:12px 16px;background:var(--red-bg);border:1px solid var(--red-border);border-radius:10px;color:var(--red);font-size:13px"></div>
     <div id="schedule-week-view"><div id="week-grid"></div></div>
     <div id="schedule-student-view" style="display:none">
@@ -665,11 +680,58 @@ button:hover{opacity:.85}
     <div id="edit-conflict-alert" style="display:none;padding:8px 12px;background:var(--red-bg);border:1px solid var(--red-border);border-radius:6px;color:var(--red);font-size:12px;margin-bottom:10px"></div>
     <div class="flex gap8 mt8">
       <button class="btn-gold flex1" onclick="saveEditSess()">💾 Save</button>
+      <button class="btn-ghost" style="border-color:var(--gold);color:var(--gold)" onclick="sremFromEditSess()">🔔</button>
       <button class="btn-danger" onclick="removeEditSessDay()">🗑 Remove Day</button>
       <button class="btn-ghost" onclick="closeEditSess()">Cancel</button>
     </div>
   </div>
 </div>
+
+<!-- SCHEDULE REMINDERS MODAL -->
+<div id="srem-overlay" onclick="closeSchedReminders()" class="overlay-base">
+  <div onclick="event.stopPropagation()" class="modal-base" style="width:480px">
+    <div class="f15 bold gold mb4">🔔 Schedule Reminders <span class="muted f12">— تذكيرات الجدول</span></div>
+    <div class="f13 bold mb12" id="srem-student-label"></div>
+    <input type="hidden" id="srem-sid"/>
+    <div id="srem-existing" class="mb12"></div>
+    <div style="border-top:1px solid var(--border);padding-top:14px">
+      <div class="f13 bold mb8">➕ New reminder</div>
+      <div class="form-group">
+        <label class="label">Type * · النوع</label>
+        <select id="srem-type" onchange="sremTypeChange()"></select>
+      </div>
+      <div class="form-group" id="srem-other-wrap" style="display:none">
+        <label class="label">Custom type name *</label>
+        <input id="srem-label" placeholder="e.g. Exam week · أسبوع اختبارات"/>
+      </div>
+      <div class="form-group">
+        <label class="label">Applies to</label>
+        <select id="srem-day"></select>
+      </div>
+      <div class="form-group">
+        <label class="label">Note · الملاحظة</label>
+        <textarea id="srem-note" placeholder="e.g. Student cancelled this week's session / will move to Thursday 6pm..." style="min-height:64px;resize:vertical"></textarea>
+      </div>
+      <div class="flex gap8">
+        <div class="flex1"><label class="label">Show from (optional)</label><input id="srem-from" type="datetime-local"/></div>
+        <div class="flex1"><label class="label">Show until</label><input id="srem-until" type="datetime-local"/></div>
+      </div>
+      <div class="srem-quick">
+        <button type="button" onclick="sremQuickUntil('today')">Today</button>
+        <button type="button" onclick="sremQuickUntil('tomorrow')">Tomorrow</button>
+        <button type="button" onclick="sremQuickUntil('week')">1 week</button>
+        <button type="button" onclick="sremQuickUntil('none')">No expiry</button>
+      </div>
+      <div class="f12 muted mt8">The reminder appears on the schedule while the time is between "from" and "until", then hides itself automatically.</div>
+      <div id="srem-error" class="f12 red mt8" style="display:none"></div>
+      <div class="flex gap8 mt12">
+        <button class="btn-gold flex1" onclick="saveSchedReminder()">💾 Save reminder</button>
+        <button class="btn-ghost" onclick="closeSchedReminders()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="rem-tip"></div>
 
 <!-- PROMO MODAL -->
 <div id="modal-overlay" onclick="closeModal()">
@@ -1111,6 +1173,7 @@ const afterLogin = async () => {
       renderAll();
       refreshBellCount();
       refreshAdminCommentBadge();
+      loadSchedReminders();
     }, 30000);
   }
   // showPage re-renders with loaded data
@@ -3987,6 +4050,211 @@ const removeEditSessDay = () => {
 };
 
 // ── Render ────────────────────────────────────────────────────────────────────
+
+// ── Schedule reminders (hover tooltip on the admin schedule) ─────────────────
+// Stored in the existing `settings` key/value table: key = "srem:<id>" → no DB change.
+const SREM_TYPES = [
+  {k:'cancel',     label:'إلغاء · Cancel',          icon:'❌', color:'#f07070'},
+  {k:'schedule',   label:'جدولة · Schedule',        icon:'📅', color:'#58a6ff'},
+  {k:'reschedule', label:'تغيير موعد · Reschedule', icon:'🔄', color:'#c9a84c'},
+  {k:'makeup',     label:'تعويض حصة · Make-up',     icon:'🔁', color:'#5dba7e'},
+  {k:'pause',      label:'إيقاف مؤقت · Pause',      icon:'⏸️', color:'#b48cf2'},
+  {k:'other',      label:'أخرى · Other',            icon:'📌', color:'#9fb0c6'}
+];
+const sremType = k => SREM_TYPES.find(t=>t.k===k) || SREM_TYPES[SREM_TYPES.length-1];
+let sremCache = null, sremLoading = false;
+
+const sremWhen = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); };
+const sremState = r => {
+  const now = Date.now();
+  if (r.from && now < new Date(r.from).getTime()) return 'scheduled';
+  if (r.until && now > new Date(r.until).getTime()) return 'expired';
+  return 'active';
+};
+const sremActiveFor = (sid, day) => (sremCache||[]).filter(r => r.student_id===sid && (!day || !r.day || r.day===day) && sremState(r)==='active');
+
+const loadSchedReminders = async () => {
+  if (!isAdmin() || sremLoading) return;
+  sremLoading = true;
+  try {
+    const rows = await sbFetch('settings?key=like.srem:*&select=key,value&limit=2000') || [];
+    sremCache = rows.map(r => {
+      let v = r.value;
+      if (typeof v === 'string') { try { v = JSON.parse(v); } catch(e) { return null; } }
+      return v && v.student_id ? { key:r.key, ...v } : null;
+    }).filter(Boolean);
+  } catch(e) { if (sremCache === null) sremCache = []; }
+  sremLoading = false;
+  const page = document.getElementById('page-schedule');
+  if (page && page.classList.contains('active')) renderSchedule();
+};
+
+// small badge shown on a chip / row / card
+const sremBadge = (sid, day) => {
+  if (!isAdmin()) return '';
+  const act = sremActiveFor(sid, day);
+  if (!act.length) return day ? `<span class="rem-add" title="Add reminder" onclick="event.stopPropagation();openSchedReminders('${sid}','${day}')">＋🔔</span>` : '';
+  const icons = [...new Set(act.map(r=>sremType(r.type).icon))].join('');
+  return `<span class="rem-pill" onclick="event.stopPropagation();openSchedReminders('${sid}','${day}')">🔔 ${icons}${act.length>1?' '+act.length:''}</span>`;
+};
+
+// overview banner (also works on phones where hover does not exist)
+const renderSremBanner = () => {
+  const el = document.getElementById('srem-banner');
+  if (!el) return;
+  const act = (sremCache||[]).filter(r=>sremState(r)==='active').sort((a,b)=>(a.until||'9').localeCompare(b.until||'9'));
+  if (!act.length) { el.style.display='none'; el.innerHTML=''; return; }
+  el.style.display = 'block';
+  el.innerHTML = `<details class="card" style="border-color:var(--gold);padding:12px 16px" open>
+    <summary style="cursor:pointer;font-weight:700;color:var(--gold)">🔔 Active reminders (${act.length})</summary>
+    <div class="mt8">${act.map(r => { const t = sremType(r.type); return `<div class="alert-row" style="cursor:pointer;gap:10px;align-items:flex-start" onclick="openSchedReminders('${r.student_id}','${r.day||''}')">
+      <div style="min-width:0"><span class="badge" style="background:${t.color}22;border:1px solid ${t.color};color:${t.color}">${t.icon} ${_esc(r.type==='other'&&r.label?r.label:t.label)}</span>
+        <span class="bold" style="margin-inline-start:6px">${_esc(r.student_name||'')}</span>${r.day?`<span class="muted f12"> · ${r.day}</span>`:''}
+        ${r.note?`<div class="f13 muted mt4" style="direction:auto">${_esc(r.note)}</div>`:''}</div>
+      <span class="f12 muted" style="white-space:nowrap">${r.until?'until '+sremWhen(r.until):'no expiry'}</span></div>`; }).join('')}</div>
+  </details>`;
+};
+
+// hover tooltip (event delegation)
+(() => {
+  const tip = document.getElementById('rem-tip');
+  if (!tip) return;
+  let curEl = null;
+  const place = e => {
+    const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+    let x = e.clientX + pad, y = e.clientY + pad;
+    if (x + w > window.innerWidth - 8) x = e.clientX - w - pad;
+    if (y + h > window.innerHeight - 8) y = e.clientY - h - pad;
+    tip.style.left = Math.max(8,x)+'px'; tip.style.top = Math.max(8,y)+'px';
+  };
+  document.addEventListener('mouseover', e => {
+    if (!isAdmin()) return;
+    const el = e.target.closest && e.target.closest('[data-rem-sid]');
+    if (!el || el === curEl) return;
+    const act = sremActiveFor(el.dataset.remSid, el.dataset.remDay || null);
+    if (!act.length) { tip.style.display='none'; curEl = null; return; }
+    curEl = el;
+    tip.innerHTML = `<div class="gold bold mb8" style="font-size:12px">🔔 Reminders</div>` + act.map(r => {
+      const t = sremType(r.type);
+      return `<div class="rt-item"><div><span style="color:${t.color};font-weight:700">${t.icon} ${_esc(r.type==='other'&&r.label?r.label:t.label)}</span>${r.day&&!el.dataset.remDay?`<span class="muted f12"> · ${r.day}</span>`:''}</div>
+        ${r.note?`<div style="direction:auto;margin-top:2px">${_esc(r.note)}</div>`:''}
+        <div class="muted" style="font-size:11px;margin-top:2px">${r.until?'⏳ until '+sremWhen(r.until):'no expiry'}${r.by?' · '+_esc(r.by):''}</div></div>`;
+    }).join('');
+    tip.style.display = 'block'; place(e);
+  });
+  document.addEventListener('mousemove', e => { if (curEl && tip.style.display==='block') place(e); });
+  document.addEventListener('mouseout', e => {
+    if (!curEl) return;
+    const to = e.relatedTarget;
+    if (!to || !curEl.contains(to)) { tip.style.display='none'; curEl = null; }
+  });
+  document.addEventListener('scroll', () => { tip.style.display='none'; curEl = null; }, true);
+})();
+
+// modal
+const toLocalInput = d => { const p = n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+const sremQuickUntil = k => {
+  const el = document.getElementById('srem-until');
+  const d = new Date();
+  if (k==='none') { el.value=''; return; }
+  if (k==='today') d.setHours(23,59,0,0);
+  if (k==='tomorrow') { d.setDate(d.getDate()+1); d.setHours(23,59,0,0); }
+  if (k==='week') { d.setDate(d.getDate()+7); d.setHours(23,59,0,0); }
+  el.value = toLocalInput(d);
+};
+const sremTypeChange = () => {
+  document.getElementById('srem-other-wrap').style.display = document.getElementById('srem-type').value==='other' ? '' : 'none';
+};
+const renderSremExisting = () => {
+  const sid = document.getElementById('srem-sid').value;
+  const list = (sremCache||[]).filter(r=>r.student_id===sid).sort((a,b)=>(b.at||'').localeCompare(a.at||''));
+  const el = document.getElementById('srem-existing');
+  if (!list.length) { el.innerHTML = '<div class="f12 muted">No reminders for this student yet.</div>'; return; }
+  el.innerHTML = list.map(r => {
+    const t = sremType(r.type), st = sremState(r);
+    const badge = st==='active' ? '<span class="badge badge-green">Active</span>' : st==='scheduled' ? '<span class="badge badge-blue">Scheduled</span>' : '<span class="badge badge-red">Expired</span>';
+    return `<div class="srem-row ${st==='expired'?'expired':''}">
+      <div class="flex justify-between items-center gap8 flex-wrap">
+        <span style="color:${t.color};font-weight:700">${t.icon} ${_esc(r.type==='other'&&r.label?r.label:t.label)}${r.day?` <span class="muted f12">· ${r.day}</span>`:''}</span>${badge}
+      </div>
+      ${r.note?`<div class="f13 mt4" style="direction:auto;white-space:pre-wrap">${_esc(r.note)}</div>`:''}
+      <div class="flex justify-between items-center mt8 gap8">
+        <span class="f12 muted">${r.from?'from '+sremWhen(r.from)+' · ':''}${r.until?'until '+sremWhen(r.until):'no expiry'}</span>
+        <button class="btn-danger" style="padding:2px 9px;font-size:11px" data-key="${_esc(r.key)}" onclick="deleteSchedReminder(this.dataset.key)">🗑 Delete</button>
+      </div></div>`;
+  }).join('');
+};
+const openSchedReminders = async (sid, day=null) => {
+  const stu = students.find(s=>s.id===sid);
+  if (!stu) return;
+  if (sremCache === null) await loadSchedReminders();
+  document.getElementById('srem-sid').value = sid;
+  document.getElementById('srem-student-label').textContent = '👤 ' + stu.name;
+  document.getElementById('srem-type').innerHTML = SREM_TYPES.map(t=>`<option value="${t.k}">${t.icon} ${t.label}</option>`).join('');
+  const pkg = schedules.find(p=>p.studentId===sid);
+  document.getElementById('srem-day').innerHTML = '<option value="">All sessions of this student</option>' +
+    ((pkg&&pkg.days)||[]).map(d=>`<option value="${d.day}">${d.day} — ${fmt12(d.start)}</option>`).join('');
+  document.getElementById('srem-day').value = day || '';
+  document.getElementById('srem-label').value = '';
+  document.getElementById('srem-note').value = '';
+  document.getElementById('srem-from').value = '';
+  document.getElementById('srem-error').style.display = 'none';
+  sremQuickUntil('today');
+  sremTypeChange();
+  renderSremExisting();
+  document.getElementById('srem-overlay').style.display = 'flex';
+};
+const closeSchedReminders = () => { document.getElementById('srem-overlay').style.display = 'none'; };
+const sremFromEditSess = () => {
+  const sid = document.getElementById('edit-sess-pkg-sid').value, day = document.getElementById('edit-sess-day').value;
+  closeEditSess(); openSchedReminders(sid, day);
+};
+const saveSchedReminder = async () => {
+  const errEl = document.getElementById('srem-error');
+  errEl.style.display = 'none';
+  const sid = document.getElementById('srem-sid').value;
+  const stu = students.find(s=>s.id===sid);
+  if (!stu) return;
+  const type = document.getElementById('srem-type').value;
+  const label = document.getElementById('srem-label').value.trim();
+  const note = document.getElementById('srem-note').value.trim();
+  const day = document.getElementById('srem-day').value;
+  const fromV = document.getElementById('srem-from').value, untilV = document.getElementById('srem-until').value;
+  const fail = m => { errEl.textContent = '⚠️ ' + m; errEl.style.display = 'block'; };
+  if (type==='other' && !label) return fail('Type a name for the custom type.');
+  if (!note && type==='other') return fail('Write a note.');
+  const from = fromV ? new Date(fromV).toISOString() : '';
+  const until = untilV ? new Date(untilV).toISOString() : '';
+  if (until && new Date(until).getTime() <= Date.now()) return fail('"Show until" must be in the future.');
+  if (from && until && new Date(from) >= new Date(until)) return fail('"Show from" must be before "Show until".');
+  const id = uid();
+  const row = { student_id:sid, student_name:stu.name, day, type, label: type==='other'?label:'', note, from, until,
+                by: currentUser.displayName||'', at: new Date().toISOString() };
+  try {
+    await sbFetch('settings?on_conflict=key', {
+      method:'POST', headers:{ 'Prefer':'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify([{ key:'srem:'+id, value: JSON.stringify(row) }])
+    });
+    (sremCache = sremCache || []).push({ key:'srem:'+id, ...row });
+    notify('🔔 Reminder saved');
+    logAction('Added schedule reminder', `${stu.name} · ${sremType(type).label}${day?' · '+day:''}`);
+    document.getElementById('srem-note').value = '';
+    renderSremExisting(); renderSchedule();
+  } catch(e) { fail('Could not save: ' + e.message); }
+};
+const deleteSchedReminder = async key => {
+  const r = (sremCache||[]).find(x=>x.key===key);
+  if (!r) return;
+  if (!confirm(`⚠️ تأكيد الحذف / Confirm delete\n\nDelete this reminder for ${r.student_name}?\nهل أنت متأكد من حذف التذكير؟`)) return;
+  try {
+    await sbFetch(`settings?key=eq.${encodeURIComponent(key)}`, { method:'DELETE' });
+    sremCache = sremCache.filter(x=>x.key!==key);
+    notify('Reminder deleted');
+    logAction('Deleted schedule reminder', r.student_name);
+    renderSremExisting(); renderSchedule();
+  } catch(e) { notify('⚠️ ' + e.message, false); }
+};
+
 const renderSchedule = () => {
   const view = document.getElementById('schedule-view').value;
   document.getElementById('schedule-week-view').style.display   = view==='week'    ? '' : 'none';
@@ -3996,6 +4264,8 @@ const renderSchedule = () => {
   if (view==='student') renderStudentScheduleView();
   if (view==='teacher') renderTeacherScheduleView();
   renderConflictBanner();
+  renderSremBanner();
+  if (isAdmin() && sremCache === null && !sremLoading) loadSchedReminders();
 };
 
 const renderConflictBanner = () => {
@@ -4065,7 +4335,9 @@ const renderWeekGrid = () => {
       const remaining = stu ? (stu.hoursBought||0)-(stu.hoursUsed||0) : null;
       const isZero = remaining !== null && remaining <= 0;
       return `<div class="session-chip" style="background:${isZero?'var(--red-bg)':c.bg};border-color:${isConflict?'var(--red)':isZero?'var(--red)':c.border};color:${isZero?'var(--red)':c.text};${isConflict?'box-shadow:0 0 0 1px var(--red)':isZero?'box-shadow:0 0 0 1px var(--red)':''}"
+        data-rem-sid="${pkg.studentId}" data-rem-day="${day}"
         onclick="openEditSess('${pkg.studentId}','${day}')">
+        ${sremBadge(pkg.studentId, day)}
         ${isConflict?'<div style="font-size:10px;color:var(--red);font-weight:700;margin-bottom:3px">⚠️ CONFLICT</div>':''}
         ${isZero?'<div style="font-size:10px;color:var(--red);font-weight:700;margin-bottom:3px">⛔ No hours left</div>':''}
         <div class="chip-name">${stu?.name||'—'}</div>
@@ -4115,7 +4387,7 @@ const renderStudentScheduleView = () => {
       }).join('');
       const remaining = (stu.hoursBought||0)-(stu.hoursUsed||0);
       const isZero = remaining <= 0;
-      html += `<div class="card teacher-schedule-card" style="border-left:3px solid ${isZero?'var(--red)':c.text}${isZero?';background:var(--red-bg)':''}">
+      html += `<div class="card teacher-schedule-card" data-rem-sid="${stu.id}" data-rem-day="" style="border-left:3px solid ${isZero?'var(--red)':c.text}${isZero?';background:var(--red-bg)':''}">
         <div class="flex justify-between items-center mb8 flex-wrap gap8">
           <div>
             <div class="bold f15" style="color:${isZero?'var(--red)':c.text}">${stu.name}${isZero?' ⛔':''}</div>
@@ -4124,6 +4396,8 @@ const renderStudentScheduleView = () => {
           </div>
           <div class="flex gap8 items-center flex-wrap">
             <span class="badge" style="background:${c.bg};border:1px solid ${c.border};color:${c.text}">${pkg.days.length} day${pkg.days.length!==1?'s':''}/week</span>
+            ${sremBadge(stu.id, null) || ''}
+            <button class="btn-ghost" style="font-size:12px;padding:5px 12px" onclick="openSchedReminders('${stu.id}')">🔔 Reminder</button>
             <button class="btn-ghost" style="font-size:12px;padding:5px 12px" onclick="openStudentScheduleModal('${stu.id}')">✏️ Edit</button>
           </div>
         </div>
@@ -4171,8 +4445,9 @@ const renderTeacherScheduleView = () => {
         const otherSess = tSchedules.filter(x=>x.stu.id!==stu.id).map(x=>x.pkg.days.find(pd=>pd.day===day)).filter(Boolean);
         const ds=timeToMins(d.start),de=ds+(d.dur||60);
         const isConflict = otherSess.some(od=>{ const os=timeToMins(od.start),oe=os+(od.dur||60); return ds<oe&&de>os; });
-        return `<div class="sched-row" style="${isConflict?'background:var(--red-bg);border-radius:6px;padding:4px 8px;':''}cursor:pointer" onclick="openEditSess('${stu.id}','${day}')">
+        return `<div class="sched-row" style="${isConflict?'background:var(--red-bg);border-radius:6px;padding:4px 8px;':''}cursor:pointer" data-rem-sid="${stu.id}" data-rem-day="${day}" onclick="openEditSess('${stu.id}','${day}')">
           <span class="sched-day-badge">${day}</span>
+          ${sremBadge(stu.id, day)}
           ${isConflict?'<span style="color:var(--red);font-size:11px;font-weight:700">⚠️</span>':''}
           <span style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:${isConflict?'var(--red)':c.text}">${fmtSess(d.start,d.dur)}</span>
           <span class="badge" style="background:${sc.bg};border:1px solid ${sc.border};color:${sc.text}">${stu.name}</span>
