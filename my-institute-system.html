@@ -256,6 +256,7 @@ button:hover{opacity:.85}
           <span id="usd-rate-saved" class="f12 green" style="display:none">✓ محفوظ</span>
         </div>
       </div>
+      <div id="sal-bulk-curr"></div>
       <div id="salary-list"></div>
       <div class="card mt16" id="salary-total"></div>
     </div>
@@ -281,6 +282,7 @@ button:hover{opacity:.85}
       <div class="flex gap8 mb16">
         <input id="salary-search-prev" placeholder="Search teacher..." oninput="renderSalaryPrevious()" style="max-width:220px"/>
       </div>
+      <div id="sal-bulk-prev"></div>
       <div id="salary-list-prev"></div>
       <div class="card mt16" id="salary-total-prev"></div>
     </div>
@@ -1834,10 +1836,6 @@ const salaryReport = tid => {
   lines.push('');
   lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   lines.push('Thank you for your hard work and dedication this month! 🌟');
-  lines.push('For any questions about this report, feel free to reach out.');
-  lines.push('');
-  lines.push(INSTITUTE_NAME+' · '+INSTITUTE_WEBSITE);
-  lines.push('WhatsApp: '+INSTITUTE_WHATSAPP);
   return lines.join('\n');
 };
 
@@ -1873,9 +1871,6 @@ const buildHistoryReportText = (t, entry) => {
   lines.push('');
   lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   lines.push('Thank you for your hard work and dedication! 🌟');
-  lines.push('');
-  lines.push(INSTITUTE_NAME+' · '+INSTITUTE_WEBSITE);
-  lines.push('WhatsApp: '+INSTITUTE_WHATSAPP);
   return lines.join('\n');
 };
 
@@ -2483,11 +2478,14 @@ const renderSalaryPrevious = () => {
     if (labelEl) labelEl.textContent = 'لا يوجد شهر سابق معلق';
     listEl.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">مفيش بيانات شهر سابق — بتظهر هنا أول ما يبدأ شهر جديد قبل ما تبعتها للهستوري.</div>';
     if (totalEl) totalEl.innerHTML = '';
+    const bulkP0 = document.getElementById('sal-bulk-prev'); if (bulkP0) bulkP0.innerHTML = '';
     return;
   }
 
   const snap = prevMonthSnapshot;
   if (labelEl) labelEl.textContent = snap.label;
+  ensureSalarySent(snap.key, renderSalaryPrevious);
+  const bulkP = document.getElementById('sal-bulk-prev'); if (bulkP) bulkP.innerHTML = salaryBulkBar('previous');
   const usdRate = parseFloat(document.getElementById('usd-rate-prev')?.value)||0;
   const search = (document.getElementById('salary-search-prev')?.value||'').toLowerCase();
   const filtered = snap.teachers.filter(t=>t.name.toLowerCase().includes(search));
@@ -2508,6 +2506,7 @@ const renderSalaryPrevious = () => {
               <span class="badge badge-red" style="font-weight:700">Total: $${t.total.toFixed(2)}</span>
               ${usdRate>0?`<span class="badge badge-green">£E ${(t.total*usdRate).toFixed(2)}</span>`:''}
               <button class="btn-green" onclick="openSalaryReportFromSnapshot('${t.teacherId}')">📋 Send Report</button>
+              ${salarySendBtn(t.teacherId,'previous')}
             </div>
           </div>
           <div style="border-top:1px solid var(--border);padding-top:12px">
@@ -2560,6 +2559,8 @@ const renderSalaryCurrent = () => {
   const labelEl = document.getElementById('sal-curr-label');
   if (labelEl) labelEl.textContent = month;
   const usdRate=getUsdRate();
+  ensureSalarySent(currentMonthKey(), renderSalaryCurrent);
+  const bulkC = document.getElementById('sal-bulk-curr'); if (bulkC) bulkC.innerHTML = salaryBulkBar('current');
   const search=(document.getElementById('salary-search-input')?.value||'').toLowerCase();
   const filteredTeachers=teachers.filter(t=>t.name.toLowerCase().includes(search));
 
@@ -2586,6 +2587,7 @@ const renderSalaryCurrent = () => {
             <span class="badge badge-red" style="font-weight:700">Total: $${totalUsd}</span>
             ${usdRate>0?`<span class="badge badge-green">£E ${(parseFloat(totalUsd)*usdRate).toFixed(2)}</span>`:''}
             <button class="btn-green" onclick="openSalaryReport('${t.id}')">📋 Send Report</button>
+            ${salarySendBtn(t.id,'current')}
           </div>
         </div>
         <div style="border-top:1px solid var(--border);padding-top:12px">
@@ -4332,6 +4334,9 @@ const reviewReport = async (rid, status) => {
 let notifsCache = null;
 let myReadsMap = {};   // notification_id -> row in notification_reads (current teacher)
 
+const notifBodyHtml = n => n.kind === 'salary'
+  ? `<div style="white-space:pre-wrap;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.7;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;overflow-x:auto">${_esc(n.message)}</div>`
+  : `<div class="f14" style="line-height:1.6">${n.message.replace(/\n/g,'<br>')}</div>`;
 const fmtNotifTime = iso => {
   const d = new Date(iso);
   return isNaN(d) ? String(iso||'') : d.toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
@@ -4396,11 +4401,12 @@ const loadMyNotifs = async (forceRefresh=false) => {
             ? '<span class="badge badge-green">✅ Done</span>'
             : (isNew ? '<span class="badge badge-amber">🔔 New</span>' : '<span class="badge badge-blue">👁 Seen</span>')}
           <span class="f12 muted">${when}</span>
+          ${n.kind==='salary'?'<span class="badge badge-green">💵 Salary</span>':''}
           <span class="f12 muted">from ${_esc(n.from_name)}</span>
         </div>
         ${!isDone ? `<button class="btn-green" style="padding:5px 14px;font-size:12px" onclick="markNotifDone('${n.id}')">✅ Done</button>` : ''}
       </div>
-      <div class="f14" style="line-height:1.6">${n.message.replace(/\n/g,'<br>')}</div>
+      ${notifBodyHtml(n)}
     </div>`;
   }).join('');
 };
@@ -4519,12 +4525,13 @@ const loadSentNotifs = async (forceRefresh=false) => {
         <div class="flex justify-between items-center flex-wrap gap8 mb6">
           <div class="flex items-center gap8 flex-wrap">
             ${summary}
+            ${n.kind==='salary'?'<span class="badge badge-green">💵 Salary</span>':''}
             <span class="f12 muted">→ ${_esc(toLabel)}</span>
             <span class="f12 muted">${when}</span>
           </div>
           <button class="btn-danger" style="padding:3px 10px;font-size:11px" onclick="deleteNotification('${n.id}')">🗑 Delete</button>
         </div>
-        <div class="f13 mb8" style="line-height:1.6">${n.message.replace(/\n/g,'<br>')}</div>
+        <div class="mb8">${notifBodyHtml(n)}</div>
         ${legacyDone && isAll ? '' : `<div class="flex flex-wrap gap8">${chips.join('')}</div>`}
       </div>`;
     }).join('');
@@ -4539,6 +4546,121 @@ const deleteNotification = async (nid) => {
     notify('Reminder deleted');
     loadSentNotifs(true);
   } catch(e) { notify('⚠️ ' + e.message, false); }
+};
+
+// ── Salary → Reminders (one click) ────────────────────────────────────────────
+// Sends a teacher's salary report as a reminder (kind='salary') and shows on the
+// salary card whether it was sent, seen and done.
+const salarySent = {};   // periodKey -> { loadedAt, loading, byTeacher: { teacherId: {notifId, createdAt, seenAt, doneAt} } }
+
+const ensureSalarySent = (key, rerender) => {
+  if (!key) return;
+  const c = salarySent[key];
+  if (c && (c.loading || Date.now() - c.loadedAt < 30000)) return;
+  salarySent[key] = { byTeacher: c ? c.byTeacher : {}, loadedAt: c ? c.loadedAt : 0, loading: true };
+  (async () => {
+    const byTeacher = {};
+    try {
+      const rows = await sbFetch(`notifications?kind=eq.salary&period_key=eq.${encodeURIComponent(key)}&order=created_at.desc&select=id,to_teacher_id,created_at`) || [];
+      const ids = rows.map(r => r.id).filter(id => /^[A-Za-z0-9_-]+$/.test(id));
+      let reads = [];
+      if (ids.length) { try { reads = await sbFetch(`notification_reads?notification_id=in.(${ids.join(',')})&select=*`) || []; } catch(e) {} }
+      const readBy = {};
+      reads.forEach(r => { readBy[`${r.notification_id}:${r.teacher_id}`] = r; });
+      rows.forEach(r => {
+        if (byTeacher[r.to_teacher_id]) return;   // newest only
+        const rd = readBy[`${r.id}:${r.to_teacher_id}`];
+        byTeacher[r.to_teacher_id] = { notifId: r.id, createdAt: r.created_at, seenAt: rd?.seen_at || null, doneAt: rd?.done_at || null };
+      });
+    } catch(e) { /* columns missing or offline: treat as nothing sent */ }
+    salarySent[key] = { byTeacher, loadedAt: Date.now(), loading: false };
+    if (rerender) rerender();
+  })();
+};
+
+const salaryKeyFor = mode => mode === 'previous' ? (prevMonthSnapshot && prevMonthSnapshot.key) : currentMonthKey();
+const salaryInfoFor = (tid, mode) => { const k = salaryKeyFor(mode); return k && salarySent[k] ? salarySent[k].byTeacher[tid] : null; };
+
+const salarySendBtn = (tid, mode) => {
+  const info = salaryInfoFor(tid, mode);
+  if (!info) return `<button class="btn-gold" onclick="sendSalaryToReminders('${tid}','${mode}')">📣 Send to Reminders</button>`;
+  const chip = info.doneAt ? `<span class="badge badge-green">✅ Sent · Done ${fmtNotifTime(info.doneAt)}</span>`
+             : info.seenAt ? `<span class="badge badge-blue">👁 Sent · Seen ${fmtNotifTime(info.seenAt)}</span>`
+             : `<span class="badge badge-amber">📨 Sent ${fmtNotifTime(info.createdAt)} · Not seen yet</span>`;
+  return `${chip}<button class="btn-ghost" style="padding:4px 10px;font-size:12px" title="Send again" onclick="sendSalaryToReminders('${tid}','${mode}')">🔁 Resend</button>`;
+};
+
+const salaryTeacherList = mode => mode === 'previous'
+  ? (prevMonthSnapshot ? prevMonthSnapshot.teachers.map(t => ({ id: t.teacherId, name: t.name })) : [])
+  : teachers.map(t => ({ id: t.id, name: t.name }));
+
+const salaryBulkBar = mode => {
+  const list = salaryTeacherList(mode);
+  if (!list.length) return '';
+  const sent = list.filter(t => salaryInfoFor(t.id, mode)).length;
+  const unsent = list.length - sent;
+  return `<div class="card mb12 flex justify-between items-center flex-wrap gap8">
+    <div class="flex gap8 items-center flex-wrap">
+      <span class="badge ${unsent===0?'badge-green':'badge-amber'}">📨 ${sent}/${list.length} salaries sent</span>
+      <span class="f12 muted">${unsent===0?'All teachers got their salary in Reminders':'Teachers without a sent salary are shown with a gold button'}</span>
+    </div>
+    ${unsent>0 ? `<button class="btn-gold" onclick="sendAllSalaries('${mode}')">📣 Send to all unsent (${unsent})</button>` : ''}
+  </div>`;
+};
+
+const buildSalaryNotifRow = (tid, mode) => {
+  let message, label, name;
+  if (mode === 'previous') {
+    if (!prevMonthSnapshot) return null;
+    const t = prevMonthSnapshot.teachers.find(x => x.teacherId === tid);
+    if (!t) return null;
+    const usdRate = parseFloat(document.getElementById('usd-rate-prev')?.value) || 0;
+    message = buildHistoryReportText(t, { ...prevMonthSnapshot, usdRate });
+    label = prevMonthSnapshot.label; name = t.name;
+  } else {
+    const t = teachers.find(x => x.id === tid);
+    if (!t) return null;
+    message = salaryReport(tid);
+    label = currentMonthLabel(); name = t.name;
+  }
+  return { label, name, row: {
+    id: uid() + Math.random().toString(36).slice(2,5), from_name: currentUser.displayName, to_teacher_id: tid,
+    message, created_at: new Date().toISOString(), read_at: null,
+    kind: 'salary', period_key: salaryKeyFor(mode)
+  }};
+};
+
+const afterSalarySent = (mode, rows) => {
+  const k = salaryKeyFor(mode);
+  const c = salarySent[k] || (salarySent[k] = { byTeacher: {}, loadedAt: 0, loading: false });
+  rows.forEach(r => { c.byTeacher[r.to_teacher_id] = { notifId: r.id, createdAt: r.created_at, seenAt: null, doneAt: null }; });
+  c.loadedAt = Date.now();
+  if (mode === 'previous') renderSalaryPrevious(); else renderSalaryCurrent();
+};
+
+const sendSalaryToReminders = async (tid, mode) => {
+  const built = buildSalaryNotifRow(tid, mode);
+  if (!built) return notify('Teacher data not found', false);
+  if (salaryInfoFor(tid, mode) && !confirm(`Salary for ${built.name} (${built.label}) was already sent. Send it again?`)) return;
+  try {
+    await sbFetch('notifications', { method: 'POST', body: JSON.stringify([built.row]) });
+    logAction('Sent salary to reminders', `${built.name} · ${built.label}`);
+    notify(`✅ Salary sent to ${built.name}`);
+    afterSalarySent(mode, [built.row]);
+  } catch(e) { notify('⚠️ ' + e.message + ' — did you add the kind/period_key columns?', false); }
+};
+
+const sendAllSalaries = async (mode) => {
+  const todo = salaryTeacherList(mode).filter(t => !salaryInfoFor(t.id, mode));
+  if (!todo.length) return;
+  if (!confirm(`Send salary reports to ${todo.length} teacher(s) via Reminders?`)) return;
+  const built = todo.map(t => buildSalaryNotifRow(t.id, mode)).filter(Boolean);
+  try {
+    await sbFetch('notifications', { method: 'POST', body: JSON.stringify(built.map(b => b.row)) });
+    logAction('Sent salaries to reminders', `${built.length} teachers · ${built[0]?.label||''}`);
+    notify(`✅ Salary sent to ${built.length} teacher(s)`);
+    afterSalarySent(mode, built.map(b => b.row));
+  } catch(e) { notify('⚠️ ' + e.message + ' — did you add the kind/period_key columns?', false); }
 };
 
 // ── Accounts Management ────────────────────────────────────────────────────────
