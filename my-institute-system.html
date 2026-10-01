@@ -103,6 +103,17 @@ button:hover{opacity:.85}
 .hw-opt-row{display:flex;gap:6px;align-items:center;margin-top:6px}
 .hw-opt-row .hw-letter{width:22px;text-align:center;color:var(--gold);font-weight:700;flex-shrink:0}
 .hw-x{background:transparent;border:1px solid var(--border);color:var(--muted);padding:4px 9px;font-size:12px}
+.hw-cat-row{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.hw-cat-row select,.hw-cat-row input{flex:1;min-width:140px}
+.hw-cat-row select.missing{border-color:var(--red)}
+.qb-group{margin-bottom:16px}
+.qb-group>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;font-weight:700;color:var(--gold);font-size:16px}
+.qb-group>summary::-webkit-details-marker{display:none}
+.qb-sub{margin:10px 0 0 14px;padding-left:12px;border-left:2px solid var(--border)}
+.qb-sub-title{font-size:13px;font-weight:700;color:var(--blue);margin:10px 0 8px;display:flex;align-items:center;gap:8px}
+.qb-item{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px}
+.qb-q{white-space:pre-wrap;font-size:15px;line-height:1.6;direction:auto}
+.qb-opt{font-size:13px;color:var(--muted);margin-top:4px;direction:auto}
 </style>
 </head>
 <body>
@@ -161,6 +172,7 @@ button:hover{opacity:.85}
   <button class="nav-btn" id="nav-reports" onclick="showPage('reports')">📝 Reports</button>
   <button class="nav-btn" id="nav-accounts" onclick="showPage('accounts')">👥 Accounts</button>
   <button class="nav-btn" id="nav-phrases" onclick="showPage('phrases')">💬 Message Phrases</button>
+  <button class="nav-btn" id="nav-qbank" onclick="showPage('qbank')">🏦 Question Bank</button>
   <button class="nav-btn" id="nav-myreports" onclick="showPage('myreports')" style="display:none">📝 My Reports</button>
   <button class="nav-btn" id="nav-mystudents" onclick="showPage('mystudents')" style="display:none">📚 My Students</button>
   <button class="nav-btn" id="nav-myschedule" onclick="showPage('myschedule')" style="display:none">📅 My Schedule</button>
@@ -487,6 +499,31 @@ button:hover{opacity:.85}
     <div id="phrases-list"></div>
   </div>
 
+  <!-- ADMIN: QUESTION BANK -->
+  <div class="page" id="page-qbank">
+    <div class="flex justify-between items-center mb8 flex-wrap gap8">
+      <div class="f18 bold">🏦 Question Bank <span class="muted f13">— بنك الأسئلة</span></div>
+      <button class="btn-ghost" onclick="loadQuestionBank(true)">🔄 Refresh</button>
+    </div>
+    <div class="f12 muted mb16">Every homework question a teacher writes is saved here automatically, separated by category (فقه، حديث، تجويد…) and by teacher name.</div>
+    <div class="card mb16">
+      <div class="flex gap12 flex-wrap">
+        <div class="flex1" style="min-width:150px"><label class="label">Group by</label>
+          <select id="qb-group" onchange="renderQuestionBank()">
+            <option value="cat">Category → Teacher</option>
+            <option value="teacher">Teacher → Category</option>
+          </select></div>
+        <div class="flex1" style="min-width:150px"><label class="label">Category</label>
+          <select id="qb-filter-cat" onchange="renderQuestionBank()"><option value="">All categories</option></select></div>
+        <div class="flex1" style="min-width:150px"><label class="label">Teacher</label>
+          <select id="qb-filter-teacher" onchange="renderQuestionBank()"><option value="">All teachers</option></select></div>
+        <div class="flex1" style="min-width:180px"><label class="label">Search</label>
+          <input id="qb-search" oninput="renderQuestionBank()" placeholder="Search in questions..."/></div>
+      </div>
+    </div>
+    <div id="qbank-content"></div>
+  </div>
+
   <!-- STUDENT: REPORTS -->
   <div class="page" id="page-stureports">
     <div class="f18 bold mb16">📝 My Monthly Reports</div>
@@ -521,6 +558,7 @@ button:hover{opacity:.85}
   <!-- ADMIN: SEND REMINDER -->
   <div class="page" id="page-sendnotifs">
     <div class="f18 bold mb16">📣 Send Reminder to Teacher</div>
+    <div id="desktop-alerts-box" class="f12 muted mb16"></div>
     <div class="card mb20" style="max-width:500px">
       <div class="form-group">
         <label class="label">Send To *</label>
@@ -1039,7 +1077,7 @@ const doLogout = () => {
 
 // Apply role-based visibility of nav items and pages
 const applyRoleUI = () => {
-  const adminNav = ['nav-dashboard','nav-teachers','nav-students','nav-salary','nav-schedule','nav-history','nav-snapshots','nav-auditlog','nav-backup','nav-attendance','nav-reports','nav-phrases','nav-sendnotifs','nav-accounts'];
+  const adminNav = ['nav-dashboard','nav-teachers','nav-students','nav-salary','nav-schedule','nav-history','nav-snapshots','nav-auditlog','nav-backup','nav-attendance','nav-reports','nav-phrases','nav-qbank','nav-sendnotifs','nav-accounts'];
   const teacherNav = ['nav-mystudents','nav-myschedule','nav-mysalary','nav-myreports','nav-mynotifs'];
   if (isStudentRole()) {
     [...adminNav,...teacherNav].forEach(id=>document.getElementById(id).style.display='none');
@@ -1455,7 +1493,7 @@ const notify = (msg, ok=true) => {
 };
 
 // ── Navigation ────────────────────────────────────────────────────────────────
-const ADMIN_ONLY_PAGES = ['dashboard','teachers','students','salary','schedule','history','snapshots','auditlog','backup','attendance','reports','accounts','addTeacher','addStudent','phrases','sendnotifs'];
+const ADMIN_ONLY_PAGES = ['dashboard','teachers','students','salary','schedule','history','snapshots','auditlog','backup','attendance','reports','accounts','addTeacher','addStudent','phrases','qbank','sendnotifs'];
 const TEACHER_ONLY_PAGES = ['mystudents','myschedule','mysalary','mynotifs'];
 
 const showPage = async id => {
@@ -1481,8 +1519,10 @@ const showPage = async id => {
           .map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
     }
     loadSentNotifs(true);
+    renderDesktopAlertsBox();
     return;
   }
+  if (id === 'qbank') { loadQuestionBank(true); return; }
   if (id === 'mynotifs') { loadMyNotifs(true); return; }
 
   // Render immediately with whatever is cached, so navigation feels instant...
@@ -1962,6 +2002,7 @@ const addTeacher = () => {
 const deleteTeacher = tid => {
   if (teacherStudents(tid).length>0) return notify('Remove teacher\'s students first',false);
   const t = teachers.find(t=>t.id===tid);
+  if (!confirm(`⚠️ تأكيد الحذف / Confirm delete\n\nRemove teacher "${t?.name||tid}"?\nهل أنت متأكد من حذف المدرس؟`)) return;
   teachers=teachers.filter(t=>t.id!==tid);
   sbDelete('teachers','id',tid);
   notify('Teacher removed'); renderAll();
@@ -1989,9 +2030,9 @@ const addStudent = () => {
 };
 
 const deleteStudent = async sid => {
-  if (!confirm('Remove this student?')) return;
   const s = students.find(s=>s.id===sid);
   if (!s) return;
+  if (!confirm(`⚠️ تأكيد الحذف / Confirm delete\n\nRemove student "${s.name}"?\nهل أنت متأكد من حذف الطالب؟`)) return;
 
   // ── Preserve teacher hours ────────────────────────────────────────────────
   // teacherHours() sums hoursUsed from the students array.
@@ -2218,6 +2259,15 @@ const saveEditStudent=async()=>{
   } else {
     notify(name+' updated ✓');
     logAction('Edited student', name);
+  }
+  // If an inactive student is re-activated and their old time slot was meanwhile given to someone else, warn.
+  const _nowActive = (document.getElementById('edit-student-status').value||'active') === 'active';
+  if (_nowActive && oldStudent && !isActiveStudent(oldStudent)) {
+    const _pkg = schedules.find(p=>p.studentId===sid);
+    if (_pkg) {
+      const _c = getConflicts(sid, _pkg.days);
+      if (_c.length) setTimeout(()=>notify(`⚠️ ${name} is active again but their old time overlaps: ` + _c.join(' | '), false), 700);
+    }
   }
   closeEditStudent(); renderAll();
 };
@@ -2768,17 +2818,37 @@ const closeAttendanceModal = () => {
 const todayDateKey = () => new Date().toISOString().slice(0,10);
 
 // ── Homework builder (essay / multiple-choice questions) ─────────────────────
+// Every question must be given a category (فقه / حديث / تجويد …). Questions are also
+// saved in the Question Bank (admin page), split by category and by teacher name.
+const QB_CATS = [
+  {k:'fiqh',    label:'فقه',            icon:'⚖️'},
+  {k:'hadith',  label:'حديث',           icon:'📖'},
+  {k:'tajweed', label:'تجويد',          icon:'🎙️'},
+  {k:'quran',   label:'قرآن (حفظ/تلاوة)', icon:'📗'},
+  {k:'tafsir',  label:'تفسير',          icon:'📚'},
+  {k:'aqeedah', label:'عقيدة',          icon:'🌙'},
+  {k:'seerah',  label:'سيرة نبوية',      icon:'🕋'},
+  {k:'islamic', label:'دراسات إسلامية',  icon:'🕌'},
+  {k:'arabic',  label:'لغة عربية',       icon:'✍️'},
+  {k:'other',   label:'أخرى (اكتب القسم)', icon:'📌'}
+];
+const qbCatInfo = k => QB_CATS.find(c=>c.k===k);
 let hwQuestions = [];
+let hwLastCat = '';
 const HW_LETTERS = 'ABCDEFGH';
 const hwSync = () => {
   document.querySelectorAll('#hw-builder .hw-q').forEach((el,i) => {
     if (!hwQuestions[i]) return;
     hwQuestions[i].q = el.querySelector('.hw-qtext').value;
+    hwQuestions[i].cat = el.querySelector('.hw-cat').value;
+    const oth = el.querySelector('.hw-cat-other');
+    hwQuestions[i].catOther = oth ? oth.value : (hwQuestions[i].catOther||'');
     if (hwQuestions[i].type === 'mcq') hwQuestions[i].opts = [...el.querySelectorAll('.hw-opt')].map(x=>x.value);
   });
 };
-const hwAdd = type => { hwSync(); hwQuestions.push({type, q:'', opts: type==='mcq' ? ['',''] : []}); hwRender(); };
-const hwRemove = i => { hwSync(); hwQuestions.splice(i,1); hwRender(); };
+const hwCatChange = () => { hwSync(); const last = hwQuestions.length ? hwQuestions[hwQuestions.length-1].cat : ''; if (last) hwLastCat = last; hwRender(); };
+const hwAdd = type => { hwSync(); hwQuestions.push({type, q:'', cat:hwLastCat, catOther:'', opts: type==='mcq' ? ['',''] : []}); hwRender(); };
+const hwRemove = i => { hwSync(); if ((hwQuestions[i].q||'').trim() && !confirm('حذف هذا السؤال؟ / Remove this question?')) return; hwQuestions.splice(i,1); hwRender(); };
 const hwAddOpt = i => { hwSync(); if (hwQuestions[i].opts.length < 8) { hwQuestions[i].opts.push(''); hwRender(); } };
 const hwRemoveOpt = (i,j) => { hwSync(); if (hwQuestions[i].opts.length > 2) { hwQuestions[i].opts.splice(j,1); hwRender(); } };
 const hwRender = () => {
@@ -2789,6 +2859,13 @@ const hwRender = () => {
       <div class="flex justify-between items-center mb8">
         <span class="badge ${q.type==='mcq'?'badge-blue':'badge-amber'}">Q${i+1} · ${q.type==='mcq'?'Multiple choice':'Essay'}</span>
         <button type="button" class="hw-x" onclick="hwRemove(${i})">✕ Remove</button>
+      </div>
+      <div class="hw-cat-row">
+        <select class="hw-cat" onchange="hwCatChange()">
+          <option value="">— ما قسم هذا السؤال؟ / Choose category * —</option>
+          ${QB_CATS.map(c=>`<option value="${c.k}" ${q.cat===c.k?'selected':''}>${c.icon} ${c.label}</option>`).join('')}
+        </select>
+        ${q.cat==='other' ? `<input class="hw-cat-other" value="${_esc(q.catOther||'')}" placeholder="اكتب اسم القسم / Type the category name"/>` : ''}
       </div>
       <textarea class="hw-qtext" placeholder="Write the question..." style="min-height:56px;resize:vertical">${_esc(q.q)}</textarea>
       ${q.type==='mcq' ? `
@@ -2802,27 +2879,61 @@ const hwRender = () => {
     </div>`).join('');
 };
 // Turns the description + questions into one readable text block (stored in the
-// existing attendance_log.note column, so no database change is needed and the
-// WhatsApp message / admin view keep working).
+// existing attendance_log.note column, so the WhatsApp message / admin view keep working)
+// and also returns the structured `items` that go to the Question Bank.
 const hwBuildText = () => {
   hwSync();
   const parts = [];
+  const items = [];
   const desc = document.getElementById('attendance-homework').value.trim();
   if (desc) parts.push(desc);
   for (let i = 0; i < hwQuestions.length; i++) {
     const q = hwQuestions[i];
     const text = (q.q||'').trim();
     if (!text) return { error: `Question ${i+1} is empty — write it or remove it.` };
+    if (!q.cat) return { error: `Question ${i+1}: اختر القسم (فقه / حديث / تجويد / دراسات إسلامية …) — choose its category.` };
+    let catLabel = qbCatInfo(q.cat)?.label || q.cat;
+    if (q.cat === 'other') {
+      catLabel = (q.catOther||'').trim();
+      if (!catLabel) return { error: `Question ${i+1}: اكتب اسم القسم — type the category name.` };
+    }
+    const tag = `[${catLabel}]`;
     if (q.type === 'mcq') {
       const opts = q.opts.map(o=>o.trim()).filter(Boolean);
       if (opts.length < 2) return { error: `Question ${i+1} needs at least 2 choices.` };
-      parts.push(`Q${i+1}) ${text}\n` + opts.map((o,j)=>`   ${HW_LETTERS[j]}) ${o}`).join('\n'));
+      parts.push(`Q${i+1} ${tag}) ${text}\n` + opts.map((o,j)=>`   ${HW_LETTERS[j]}) ${o}`).join('\n'));
+      items.push({ type:'mcq', cat:q.cat, catLabel, q:text, opts });
     } else {
-      parts.push(`Q${i+1}) ${text}\n   ✍️ (essay answer)`);
+      parts.push(`Q${i+1} ${tag}) ${text}\n   ✍️ (essay answer)`);
+      items.push({ type:'essay', cat:q.cat, catLabel, q:text, opts:[] });
     }
   }
   if (!parts.length) return { error: 'Homework is required — write a description or add a question.' };
-  return { text: parts.join('\n\n').replace(/ \| Note: /g, ' - Note: ') };
+  return { text: parts.join('\n\n').replace(/ \| Note: /g, ' - Note: '), items };
+};
+
+// ── Question Bank storage (re-uses the existing `settings` key/value table → no DB change) ──
+// One row per question, key = "qb:<attendanceId>-<n>", so teachers never overwrite each other.
+const saveQuestionsToBank = async (items, stu, attId) => {
+  if (!items || !items.length) return;
+  const at = new Date().toISOString();
+  const rows = items.map((it,i) => ({
+    key: `qb:${attId}-${i+1}`,
+    value: JSON.stringify({
+      teacher_id: currentUser.teacherId || '', teacher_name: currentUser.displayName || '',
+      student_id: stu.id, student_name: stu.name,
+      cat: it.cat, cat_label: it.catLabel, type: it.type, q: it.q, opts: it.opts || [], at
+    })
+  }));
+  try {
+    await sbFetch('settings?on_conflict=key', {
+      method: 'POST',
+      headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(rows)
+    });
+  } catch(e) {
+    notify('⚠️ Attendance saved, but the questions could not be added to the Question Bank: ' + e.message, false);
+  }
 };
 
 const submitAttendance = async () => {
@@ -2840,6 +2951,7 @@ const submitAttendance = async () => {
     return;
   }
   const homework = hwRes.text;
+  const attId = uid();
 
   const stu = students.find(s => s.id === sid);
   if (!stu) return;
@@ -2899,7 +3011,7 @@ const submitAttendance = async () => {
     await sbFetch('attendance_log', {
       method: 'POST',
       body: JSON.stringify([{
-        id: uid(),
+        id: attId,
         student_id: sid,
         student_name: stu.name,
         teacher_id: currentUser.teacherId || null,
@@ -2926,9 +3038,127 @@ const submitAttendance = async () => {
     return;
   }
 
+  await saveQuestionsToBank(hwRes.items, stu, attId);
   closeAttendanceModal();
   notify(`✅ ${hours}h logged for ${stu.name}`);
   renderAll();
+};
+
+
+// ── Admin: Question Bank page ─────────────────────────────────────────────────
+let qbCache = null;
+const qbCatOrder = label => { const i = QB_CATS.findIndex(c=>c.label===label); return i === -1 ? 999 : i; };
+const qbIconFor = label => (QB_CATS.find(c=>c.label===label)?.icon) || '📌';
+
+const loadQuestionBank = async (force=false) => {
+  const el = document.getElementById('qbank-content');
+  if (!el) return;
+  if (!qbCache || force) {
+    el.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">Loading…</div>';
+    try {
+      const rows = await sbFetch('settings?key=like.qb:*&select=key,value&limit=5000') || [];
+      qbCache = rows.map(r => {
+        let v = r.value;
+        if (typeof v === 'string') { try { v = JSON.parse(v); } catch(e) { return null; } }
+        return v && v.q ? { key:r.key, ...v } : null;
+      }).filter(Boolean).sort((a,b)=>(b.at||'').localeCompare(a.at||''));
+    } catch(e) {
+      el.innerHTML = `<div class="card" style="text-align:center;padding:40px;color:var(--red)">⚠️ ${_esc(e.message)}</div>`;
+      return;
+    }
+  }
+  // refresh filter dropdowns (keep current selection)
+  const catSel = document.getElementById('qb-filter-cat'), tSel = document.getElementById('qb-filter-teacher');
+  const curCat = catSel.value, curT = tSel.value;
+  const cats = [...new Set(qbCache.map(r=>r.cat_label))].sort((a,b)=>qbCatOrder(a)-qbCatOrder(b)||a.localeCompare(b));
+  const tchs = [...new Set(qbCache.map(r=>r.teacher_name))].sort((a,b)=>a.localeCompare(b));
+  catSel.innerHTML = '<option value="">All categories</option>' + cats.map(c=>`<option value="${_esc(c)}">${qbIconFor(c)} ${_esc(c)}</option>`).join('');
+  tSel.innerHTML = '<option value="">All teachers</option>' + tchs.map(t=>`<option value="${_esc(t)}">${_esc(t)}</option>`).join('');
+  catSel.value = cats.includes(curCat) ? curCat : '';
+  tSel.value = tchs.includes(curT) ? curT : '';
+  renderQuestionBank();
+};
+
+const qbItemHtml = r => {
+  const d = new Date(r.at);
+  const when = isNaN(d) ? '' : d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+  const opts = (r.opts||[]).map((o,j)=>`<div class="qb-opt"><b class="gold">${HW_LETTERS[j]})</b> ${_esc(o)}</div>`).join('');
+  return `<div class="qb-item">
+    <div class="flex justify-between items-center gap8 flex-wrap mb8">
+      <span class="badge ${r.type==='mcq'?'badge-blue':'badge-amber'}">${r.type==='mcq'?'Multiple choice':'Essay'}</span>
+      <span class="f12 muted">👤 ${_esc(r.student_name||'—')} · ${when}</span>
+    </div>
+    <div class="qb-q">${_esc(r.q)}</div>
+    ${opts}
+    <div class="flex gap8 mt12">
+      <button class="btn-ghost" style="padding:3px 10px;font-size:11px" data-key="${_esc(r.key)}" onclick="copyBankQuestion(this.dataset.key)">📋 Copy</button>
+      <button class="btn-danger" style="padding:3px 10px;font-size:11px" data-key="${_esc(r.key)}" onclick="deleteBankQuestion(this.dataset.key)">🗑 Delete</button>
+    </div>
+  </div>`;
+};
+
+const renderQuestionBank = () => {
+  const el = document.getElementById('qbank-content');
+  if (!el || !qbCache) return;
+  const fCat = document.getElementById('qb-filter-cat').value;
+  const fT = document.getElementById('qb-filter-teacher').value;
+  const q = (document.getElementById('qb-search').value||'').trim().toLowerCase();
+  const mode = document.getElementById('qb-group').value;
+  const list = qbCache.filter(r =>
+    (!fCat || r.cat_label === fCat) && (!fT || r.teacher_name === fT) &&
+    (!q || (r.q||'').toLowerCase().includes(q) || (r.opts||[]).some(o=>String(o).toLowerCase().includes(q)))
+  );
+  if (!list.length) {
+    el.innerHTML = `<div class="card muted" style="text-align:center;padding:40px">${qbCache.length ? 'No questions match your filters.' : 'No questions yet — they appear here automatically when teachers add questions while logging attendance.'}</div>`;
+    return;
+  }
+  // group: level1 → level2 → items
+  const l1Key = mode==='cat' ? 'cat_label' : 'teacher_name';
+  const l2Key = mode==='cat' ? 'teacher_name' : 'cat_label';
+  const g1 = {};
+  list.forEach(r => { ((g1[r[l1Key]] = g1[r[l1Key]] || {})[r[l2Key]] = g1[r[l1Key]][r[l2Key]] || []).push(r); });
+  const sorter1 = (a,b) => mode==='cat' ? qbCatOrder(a)-qbCatOrder(b)||a.localeCompare(b) : a.localeCompare(b);
+  const sorter2 = (a,b) => mode==='cat' ? a.localeCompare(b) : qbCatOrder(a)-qbCatOrder(b)||a.localeCompare(b);
+  const total = list.length;
+  el.innerHTML = `<div class="f12 muted mb12">${total} question${total!==1?'s':''}</div>` +
+    Object.keys(g1).sort(sorter1).map(k1 => {
+      const g2 = g1[k1];
+      const count = Object.values(g2).reduce((a,x)=>a+x.length,0);
+      const icon = mode==='cat' ? qbIconFor(k1) : '👨‍🏫';
+      return `<details class="qb-group" open>
+        <summary><span>${icon} ${_esc(k1)}</span><span class="badge badge-amber">${count}</span></summary>
+        ${Object.keys(g2).sort(sorter2).map(k2 => `
+          <div class="qb-sub">
+            <div class="qb-sub-title">${mode==='cat' ? '👨‍🏫' : qbIconFor(k2)} ${_esc(k2)} <span class="badge badge-blue">${g2[k2].length}</span></div>
+            ${g2[k2].map(qbItemHtml).join('')}
+          </div>`).join('')}
+      </details>`;
+    }).join('');
+};
+
+const copyBankQuestion = async key => {
+  const r = (qbCache||[]).find(x=>x.key===key);
+  if (!r) return;
+  const text = r.q + ((r.opts||[]).length ? '\n' + r.opts.map((o,j)=>`${HW_LETTERS[j]}) ${o}`).join('\n') : '');
+  try { await navigator.clipboard.writeText(text); notify('📋 Copied'); }
+  catch(e) {
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); notify('📋 Copied'); } catch(_) { notify('Could not copy', false); }
+    ta.remove();
+  }
+};
+
+const deleteBankQuestion = async key => {
+  const r = (qbCache||[]).find(x=>x.key===key);
+  if (!r) return;
+  if (!confirm(`⚠️ تأكيد الحذف / Confirm delete\n\nDelete this question from the Question Bank?\nهل أنت متأكد من حذف السؤال من بنك الأسئلة؟\n\n"${r.q.slice(0,120)}${r.q.length>120?'…':''}"`)) return;
+  try {
+    await sbFetch(`settings?key=eq.${encodeURIComponent(key)}`, { method:'DELETE' });
+    qbCache = qbCache.filter(x=>x.key!==key);
+    notify('Question deleted');
+    logAction('Deleted bank question', `${r.cat_label} · ${r.teacher_name}`);
+    loadQuestionBank();
+  } catch(e) { notify('⚠️ ' + e.message, false); }
 };
 
 // Admin: load and display attendance log
@@ -3257,7 +3487,7 @@ const renderTrialAlert = () => {
   if (!el || !currentUser) return;
   const now = new Date();
   const todayDay = DAYS[[1,2,3,4,5,6,0][now.getDay()]] || now.toLocaleDateString('en-GB',{weekday:'long'});
-  const myStudents = students.filter(s => s.teacherId === currentUser.teacherId && s.isTrial);
+  const myStudents = students.filter(s => s.teacherId === currentUser.teacherId && s.isTrial && isActiveStudent(s));
   if (!myStudents.length) { el.innerHTML = ''; return; }
 
   const trialAlerts = myStudents.map(s => {
@@ -3338,7 +3568,7 @@ const renderMyStudents = async () => {
 const renderMySchedule = () => {
   const el = document.getElementById('myschedule-list');
   if (!el || !currentUser) return;
-  const myStudents = students.filter(s=>s.teacherId===currentUser.teacherId);
+  const myStudents = students.filter(s=>s.teacherId===currentUser.teacherId && isActiveStudent(s));
   const mySchedules = myStudents.map(s=>({stu:s, pkg:schedules.find(p=>p.studentId===s.id)})).filter(x=>x.pkg);
   if (!mySchedules.length) { el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">No sessions scheduled yet.</div>'; return; }
 
@@ -3402,6 +3632,11 @@ const renderAll=()=>{
 // ── Schedule ──────────────────────────────────────────────────────────────────
 // schedules: [{id, studentId, subject, days:[{day, start, end}]}]
 let schedules = [];
+// A student who is NOT "active" (suspended / on leave) has their schedule hidden automatically
+// and their time slots count as FREE (no conflicts). Nothing is deleted: the schedule comes
+// back by itself as soon as the student is set back to Active.
+const isActiveStudent = s => (s.status||'active') === 'active';
+const activeSchedules = () => schedules.filter(p => { const st = students.find(x=>x.id===p.studentId); return !st || isActiveStudent(st); });
 
 const persistSchedules = async () => {
   try { await sbUpsert('schedules', schedules, scheduleToDb); }
@@ -3446,7 +3681,7 @@ const fmtSess = (start, dur) => {
 const filterStudentSchedDropdown = () => {
   const q = (document.getElementById('stu-sched-student-search').value||'').toLowerCase().trim();
   const dd = document.getElementById('stu-sched-student-dropdown');
-  const sorted = [...students].sort((a,b)=>a.name.localeCompare(b.name));
+  const sorted = [...students].filter(isActiveStudent).sort((a,b)=>a.name.localeCompare(b.name));
   const filtered = q ? sorted.filter(s=>s.name.toLowerCase().includes(q)) : sorted;
   if (!filtered.length) {
     dd.innerHTML = '<div style="padding:10px 14px;color:var(--muted);font-size:13px">No students found</div>';
@@ -3536,7 +3771,7 @@ const getConflicts = (editingSid, days) => {
   const tid = stu.teacherId;
   const conflicts = [];
   // All sessions of this teacher (other students)
-  schedules.forEach(pkg => {
+  activeSchedules().forEach(pkg => {
     if (pkg.studentId === editingSid) return;
     const otherStu = students.find(s=>s.id===pkg.studentId);
     if (!otherStu || otherStu.teacherId !== tid) return;
@@ -3768,7 +4003,7 @@ const renderConflictBanner = () => {
   if (!banner) return;
   const allConflicts = [];
   teachers.forEach(t => {
-    const tStudents = students.filter(s=>s.teacherId===t.id);
+    const tStudents = students.filter(s=>s.teacherId===t.id && isActiveStudent(s));
     DAYS.forEach(day => {
       const daySess = [];
       tStudents.forEach(s=>{
@@ -3802,7 +4037,7 @@ const renderWeekGrid = () => {
     const isToday = day === todayDay;
     // collect all sessions for this day across all packages
     const daySessions = [];
-    schedules.forEach(pkg => {
+    activeSchedules().forEach(pkg => {
       const d = pkg.days.find(d=>d.day===day);
       if (!d) return;
       const stu = students.find(s=>s.id===pkg.studentId);
@@ -3855,7 +4090,7 @@ const renderWeekGrid = () => {
 
 const renderStudentScheduleView = () => {
   const q = (document.getElementById('schedule-student-search')?.value||'').trim().toLowerCase();
-  const sortedStu = [...students].sort((a,b)=>a.name.localeCompare(b.name)).filter(s=>!q||s.name.toLowerCase().includes(q));
+  const sortedStu = [...students].filter(isActiveStudent).sort((a,b)=>a.name.localeCompare(b.name)).filter(s=>!q||s.name.toLowerCase().includes(q));
   const withSched = sortedStu.filter(s=>schedules.find(p=>p.studentId===s.id));
   const noSched   = sortedStu.filter(s=>!schedules.find(p=>p.studentId===s.id));
 
@@ -3902,6 +4137,8 @@ const renderStudentScheduleView = () => {
       </div>`;
     }
   }
+  const hiddenInactive = students.filter(s=>!isActiveStudent(s) && schedules.some(p=>p.studentId===s.id)).length;
+  if (hiddenInactive) html += `<div class="f12 muted mt12">🙈 ${hiddenInactive} inactive student${hiddenInactive!==1?'s':''} hidden (suspended / on leave) — their time slots are free now. They come back automatically when set to Active.</div>`;
   document.getElementById('student-schedule-list').innerHTML = html;
 };
 
@@ -3919,7 +4156,7 @@ const renderTeacherScheduleView = () => {
   document.getElementById('teacher-schedule-list').innerHTML = sorted.map(t => {
     const c = teacherColorByIdx(t.id);
     // get all students of this teacher who have schedules
-    const tStudents = students.filter(s=>s.teacherId===t.id);
+    const tStudents = students.filter(s=>s.teacherId===t.id && isActiveStudent(s));
     const tSchedules = tStudents.map(s=>({stu:s, pkg:schedules.find(p=>p.studentId===s.id)})).filter(x=>x.pkg);
 
     // build day-grouped view
@@ -4413,13 +4650,29 @@ const refreshAdminCommentBadge = async (first=false) => {
     _lastAdminCommentCount = n;
   } catch(e) { /* non-fatal */ }
 };
+// Browser pop-up alerts are now OPT-IN: the system never asks by itself (that caused the
+// permission prompt to reappear on every refresh). The admin can turn them on with one button.
+const renderDesktopAlertsBox = () => {
+  const el = document.getElementById('desktop-alerts-box');
+  if (!el) return;
+  if (!window.Notification) { el.innerHTML = ''; return; }
+  const perm = Notification.permission;
+  if (perm === 'granted') el.innerHTML = '🔔 Desktop pop-up alerts: <span class="green bold">ON</span>';
+  else if (perm === 'denied') el.innerHTML = '🔕 Desktop pop-up alerts are blocked in this browser (in-app alerts still work). To enable them: click the 🔒 icon next to the address bar → Notifications → Allow.';
+  else el.innerHTML = '🔕 Desktop pop-up alerts are off (in-app alerts still work). <button class="btn-ghost" style="padding:4px 12px;font-size:12px;margin-inline-start:8px" onclick="enableDesktopAlerts()">🔔 Enable pop-up alerts</button>';
+};
+const enableDesktopAlerts = async () => {
+  try {
+    const p = await Notification.requestPermission();
+    notify(p === 'granted' ? '✅ Desktop alerts enabled' : 'Desktop alerts not enabled', p === 'granted');
+  } catch(e) {}
+  renderDesktopAlertsBox();
+};
 const markAdminCommentsSeen = async () => {
   adminCommentsSeenAt = new Date().toISOString();
   _lastAdminCommentCount = 0;
   const badge = document.getElementById('notif-admin-badge');
   if (badge) badge.style.display = 'none';
-  // Ask once for browser notifications (shown while the system is open in a tab)
-  try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch(e) {}
   await setSetting('mit_comments_seen_at', adminCommentsSeenAt);
 };
 
