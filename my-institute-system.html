@@ -532,7 +532,7 @@ button:hover{opacity:.85}
       </div>
       <button class="btn-gold" style="width:100%" onclick="sendNotification()">📤 Send Reminder</button>
     </div>
-    <div class="f15 bold mb12">📋 Sent Reminders</div>
+    <div class="flex justify-between items-center mb12"><div class="f15 bold">📋 Sent Reminders</div><button class="btn-ghost" onclick="loadSentNotifs(true)">🔄 Refresh</button></div>
     <div id="sent-notifs-list"></div>
   </div>
 
@@ -1077,7 +1077,7 @@ const afterLogin = async () => {
 };
 
 // ── Backup ────────────────────────────────────────────────────────────────────
-const BACKUP_TABLES = ['teachers','students','schedules','history','attendance_log','monthly_reports','notifications','audit_log','settings','custom_phrases'];
+const BACKUP_TABLES = ['teachers','students','schedules','history','attendance_log','monthly_reports','notifications','notification_reads','audit_log','settings','custom_phrases'];
 
 const downloadBackup = async () => {
   const statusEl = document.getElementById('backup-status');
@@ -4326,22 +4326,59 @@ const reviewReport = async (rid, status) => {
 };
 
 // ── Notifications / Reminders ─────────────────────────────────────────────────
+// Per-teacher tracking: every teacher gets their own row in `notification_reads`
+// (seen_at = opened the Reminders page, done_at = pressed ✅ Done), so the admin
+// can see exactly WHO saw each reminder, even when it was sent to "All Teachers".
 let notifsCache = null;
+let myReadsMap = {};   // notification_id -> row in notification_reads (current teacher)
+
+const fmtNotifTime = iso => {
+  const d = new Date(iso);
+  return isNaN(d) ? String(iso||'') : d.toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+};
+// Done for the current teacher? (legacy read_at on old reminders still counts as done)
+const isNotifDoneForMe = n => !!(myReadsMap[n.id] && myReadsMap[n.id].done_at) || !!n.read_at;
 
 const loadMyNotifs = async (forceRefresh=false) => {
   const el = document.getElementById('mynotifs-list');
   if (!el || !currentUser) return;
+  const tid = currentUser.teacherId;
+  let freshIds = new Set();
   if (!notifsCache || forceRefresh) {
     el.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">Loading…</div>';
     try {
-      const tid = currentUser.teacherId;
-      const rows = await sbFetch(`notifications?or=(to_teacher_id.eq.${encodeURIComponent(tid)},to_teacher_id.eq.all)&order=created_at.desc&select=*`);
+      const [rows, reads] = await Promise.all([
+        sbFetch(`notifications?or=(to_teacher_id.eq.${encodeURIComponent(tid)},to_teacher_id.eq.all)&order=created_at.desc&select=*`),
+        sbFetch(`notification_reads?teacher_id=eq.${encodeURIComponent(tid)}&select=*`)
+      ]);
       notifsCache = rows || [];
+      myReadsMap = {};
+      (reads||[]).forEach(r => { myReadsMap[r.notification_id] = r; });
     } catch(e) {
-      el.innerHTML = `<div class="card" style="text-align:center;padding:40px;color:var(--red)">⚠️ ${e.message}<br><small>Make sure the notifications table exists in Supabase.</small></div>`;
+      el.innerHTML = `<div class="card" style="text-align:center;padding:40px;color:var(--red)">⚠️ ${e.message}<br><small>Make sure the notifications and notification_reads tables exist in Supabase.</small></div>`;
       return;
     }
   }
+
+  // Record "seen" for everything this teacher hasn't opened before
+  const unseen = notifsCache.filter(n => !myReadsMap[n.id]);
+  unseen.forEach(n => freshIds.add(n.id));
+  if (unseen.length) {
+    const nowIso = new Date().toISOString();
+    const newRows = unseen.map(n => ({
+      id: `${n.id}:${tid}`, notification_id: n.id, teacher_id: tid,
+      teacher_name: currentUser.displayName, seen_at: nowIso
+    }));
+    try {
+      await sbFetch('notification_reads?on_conflict=id', {
+        method: 'POST',
+        headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(newRows)
+      });
+      newRows.forEach(r => { myReadsMap[r.notification_id] = { ...r, done_at: null }; });
+    } catch(e) { /* non-fatal: will retry next time the page is opened */ }
+  }
+
   updateNotifBadge();
   if (!notifsCache.length) {
     el.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">No reminders yet.</div>';
@@ -4350,15 +4387,16 @@ const loadMyNotifs = async (forceRefresh=false) => {
   el.innerHTML = notifsCache.map(n => {
     const d = new Date(n.created_at);
     const when = isNaN(d) ? n.created_at : d.toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-    const isDone = !!n.read_at;
+    const isDone = isNotifDoneForMe(n);
+    const isNew = freshIds.has(n.id);
     return `<div class="card mb12" style="border-left:3px solid ${isDone?'var(--border)':'var(--gold)'}">
       <div class="flex justify-between items-center flex-wrap gap8 mb8">
         <div class="flex items-center gap8">
           ${isDone
             ? '<span class="badge badge-green">✅ Done</span>'
-            : '<span class="badge badge-amber">🔔 New</span>'}
+            : (isNew ? '<span class="badge badge-amber">🔔 New</span>' : '<span class="badge badge-blue">👁 Seen</span>')}
           <span class="f12 muted">${when}</span>
-          <span class="f12 muted">from ${n.from_name}</span>
+          <span class="f12 muted">from ${_esc(n.from_name)}</span>
         </div>
         ${!isDone ? `<button class="btn-green" style="padding:5px 14px;font-size:12px" onclick="markNotifDone('${n.id}')">✅ Done</button>` : ''}
       </div>
@@ -4369,12 +4407,19 @@ const loadMyNotifs = async (forceRefresh=false) => {
 
 const markNotifDone = async (nid) => {
   try {
-    await sbFetch(`notifications?id=eq.${nid}`, {
-      method: 'PATCH',
-      headers: { 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ read_at: new Date().toISOString() })
+    const tid = currentUser.teacherId;
+    const nowIso = new Date().toISOString();
+    const existing = myReadsMap[nid];
+    await sbFetch('notification_reads?on_conflict=id', {
+      method: 'POST',
+      headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify([{
+        id: `${nid}:${tid}`, notification_id: nid, teacher_id: tid,
+        teacher_name: currentUser.displayName,
+        seen_at: (existing && existing.seen_at) || nowIso,
+        done_at: nowIso
+      }])
     });
-    notifsCache = null;
     await loadMyNotifs(true);
     notify('✅ Marked as done');
   } catch(e) { notify('⚠️ ' + e.message, false); }
@@ -4383,7 +4428,7 @@ const markNotifDone = async (nid) => {
 const updateNotifBadge = () => {
   const badge = document.getElementById('notif-badge');
   if (!badge || !notifsCache) return;
-  const unread = notifsCache.filter(n => !n.read_at).length;
+  const unread = notifsCache.filter(n => !isNotifDoneForMe(n)).length;
   badge.textContent = unread;
   badge.style.display = unread > 0 ? '' : 'none';
 };
@@ -4391,11 +4436,15 @@ const updateNotifBadge = () => {
 const refreshNotifBadge = async () => {
   if (!isTeacherRole() || !currentUser?.teacherId) return;
   try {
-    const tid = currentUser.teacherId;
-    const rows = await sbFetch(`notifications?or=(to_teacher_id.eq.${encodeURIComponent(tid)},to_teacher_id.eq.all)&read_at=is.null&select=id`);
+    const tid = encodeURIComponent(currentUser.teacherId);
+    const [rows, reads] = await Promise.all([
+      sbFetch(`notifications?or=(to_teacher_id.eq.${tid},to_teacher_id.eq.all)&read_at=is.null&select=id`),
+      sbFetch(`notification_reads?teacher_id=eq.${tid}&done_at=not.is.null&select=notification_id`)
+    ]);
+    const doneIds = new Set((reads||[]).map(r => r.notification_id));
+    const n = (rows||[]).filter(r => !doneIds.has(r.id)).length;
     const badge = document.getElementById('notif-badge');
     if (!badge) return;
-    const n = (rows||[]).length;
     badge.textContent = n;
     badge.style.display = n > 0 ? '' : 'none';
   } catch(e) { /* non-fatal */ }
@@ -4432,25 +4481,51 @@ const loadSentNotifs = async (forceRefresh=false) => {
   try {
     const rows = await sbFetch('notifications?order=created_at.desc&select=*&limit=100');
     if (!rows || !rows.length) { el.innerHTML = '<div class="card muted" style="text-align:center;padding:30px">No reminders sent yet.</div>'; return; }
+
+    // Who saw / finished each reminder
+    const ids = rows.map(n => n.id).filter(id => /^[A-Za-z0-9_-]+$/.test(id));
+    let reads = [];
+    try { reads = ids.length ? (await sbFetch(`notification_reads?notification_id=in.(${ids.join(',')})&select=*`)) || [] : []; }
+    catch(e) { reads = []; }
+    const readsBy = {};   // notification_id -> teacher_id -> row
+    reads.forEach(r => { (readsBy[r.notification_id] = readsBy[r.notification_id] || {})[r.teacher_id] = r; });
+
     el.innerHTML = rows.map(n => {
       const d = new Date(n.created_at);
       const when = isNaN(d) ? n.created_at : d.toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-      const toLabel = n.to_teacher_id === 'all' ? '📢 All Teachers' : (teachers.find(t=>t.id===n.to_teacher_id)?.name || n.to_teacher_id);
-      const isDone = !!n.read_at;
-      const readWhen = isDone ? new Date(n.read_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : null;
-      return `<div class="card mb10" style="border-left:3px solid ${isDone?'var(--green-border)':'var(--gold)'}">
+      const isAll = n.to_teacher_id === 'all';
+      const toLabel = isAll ? '📢 All Teachers' : (teachers.find(t=>t.id===n.to_teacher_id)?.name || n.to_teacher_id);
+      const recipients = isAll ? [...teachers].sort((a,b)=>a.name.localeCompare(b.name))
+                               : [teachers.find(t=>t.id===n.to_teacher_id) || {id:n.to_teacher_id, name:n.to_teacher_id}];
+      const legacyDone = !!n.read_at && !readsBy[n.id];   // old reminders (before per-teacher tracking)
+
+      let seenCount = 0, doneCount = 0;
+      const chips = recipients.map(t => {
+        const r = (readsBy[n.id]||{})[t.id];
+        if (r && r.done_at) { seenCount++; doneCount++;
+          return `<span class="badge badge-green" title="Seen ${fmtNotifTime(r.seen_at||r.done_at)}">✅ ${_esc(t.name)} · Done ${fmtNotifTime(r.done_at)}</span>`; }
+        if (r && r.seen_at) { seenCount++;
+          return `<span class="badge badge-blue">👁 ${_esc(t.name)} · Seen ${fmtNotifTime(r.seen_at)}</span>`; }
+        if (legacyDone && !isAll) { seenCount++; doneCount++;
+          return `<span class="badge badge-green">✅ ${_esc(t.name)} · Done ${fmtNotifTime(n.read_at)}</span>`; }
+        return `<span class="badge badge-amber">⏳ ${_esc(t.name)} · Not seen</span>`;
+      });
+      const allSeen = seenCount === recipients.length;
+      const summary = legacyDone && isAll
+        ? '<span class="badge badge-green">✅ Marked done (old reminder — per-teacher details not recorded)</span>'
+        : `<span class="badge ${allSeen?'badge-green':'badge-amber'}">👁 ${seenCount}/${recipients.length} seen</span>
+           <span class="badge ${doneCount===recipients.length?'badge-green':'badge-amber'}">✅ ${doneCount}/${recipients.length} done</span>`;
+      return `<div class="card mb10" style="border-left:3px solid ${allSeen||legacyDone?'var(--green-border)':'var(--gold)'}">
         <div class="flex justify-between items-center flex-wrap gap8 mb6">
           <div class="flex items-center gap8 flex-wrap">
-            <span class="badge ${isDone?'badge-green':'badge-amber'}">${isDone?'✅ Seen':'⏳ Unread'}</span>
-            <span class="f12 muted">→ ${toLabel}</span>
+            ${summary}
+            <span class="f12 muted">→ ${_esc(toLabel)}</span>
             <span class="f12 muted">${when}</span>
           </div>
-          <div class="flex gap8 items-center">
-            ${isDone ? `<span class="f12 green">✅ Done at ${readWhen}</span>` : ''}
-            <button class="btn-danger" style="padding:3px 10px;font-size:11px" onclick="deleteNotification('${n.id}')">🗑 Delete</button>
-          </div>
+          <button class="btn-danger" style="padding:3px 10px;font-size:11px" onclick="deleteNotification('${n.id}')">🗑 Delete</button>
         </div>
-        <div class="f13" style="line-height:1.6">${n.message.replace(/\n/g,'<br>')}</div>
+        <div class="f13 mb8" style="line-height:1.6">${n.message.replace(/\n/g,'<br>')}</div>
+        ${legacyDone && isAll ? '' : `<div class="flex flex-wrap gap8">${chips.join('')}</div>`}
       </div>`;
     }).join('');
   } catch(e) { el.innerHTML = `<div class="card muted" style="text-align:center;padding:30px">⚠️ ${e.message}</div>`; }
@@ -4459,6 +4534,7 @@ const loadSentNotifs = async (forceRefresh=false) => {
 const deleteNotification = async (nid) => {
   if (!confirm('Delete this reminder?')) return;
   try {
+    await sbFetch(`notification_reads?notification_id=eq.${nid}`, { method: 'DELETE' }).catch(()=>{});
     await sbFetch(`notifications?id=eq.${nid}`, { method: 'DELETE' });
     notify('Reminder deleted');
     loadSentNotifs(true);
