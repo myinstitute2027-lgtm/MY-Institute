@@ -167,7 +167,7 @@ button:hover{opacity:.85}
   <button class="nav-btn" id="nav-mysalary" onclick="showPage('mysalary')" style="display:none">💵 My Salary</button>
   <button class="nav-btn" id="nav-stureports" onclick="showPage('stureports')" style="display:none">📝 My Reports</button>
   <button class="nav-btn" id="nav-mynotifs" onclick="showPage('mynotifs')" style="display:none">🔔 Reminders <span id="notif-badge" style="display:none;background:var(--red);color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 6px;margin-left:4px"></span></button>
-  <button class="nav-btn" id="nav-sendnotifs" onclick="showPage('sendnotifs')" style="display:none">📣 Send Reminder</button>
+  <button class="nav-btn" id="nav-sendnotifs" onclick="showPage('sendnotifs')" style="display:none">📣 Send Reminder <span id="notif-admin-badge" style="display:none;background:var(--red);color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 6px;margin-left:4px"></span></button>
 </div>
   <button id="nav-arrow-right" onclick="document.getElementById('nav').scrollBy({left:160,behavior:'smooth'})"
     style="position:absolute;right:0;top:0;bottom:0;z-index:10;width:36px;background:linear-gradient(to left,#0e1521 70%,transparent);border:none;color:var(--gold);font-size:22px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">&#8250;</button>
@@ -1064,7 +1064,7 @@ const afterLogin = async () => {
   applyRoleUI();
   if (isStudentRole()) { document.getElementById('loading-state').style.display='none'; showPage('stureports'); return; }
   await init(); // loads all data, runs monthly reset, calls renderAll()
-  if (isAdmin()) refreshBellCount();
+  if (isAdmin()) { refreshBellCount(); refreshAdminCommentBadge(true); }
   if (isTeacherRole()) refreshNotifBadge();
   // Auto-refresh every 30s so admin sees teacher attendance without manual reload
   if (isAdmin()) {
@@ -1072,6 +1072,7 @@ const afterLogin = async () => {
       await refreshCoreData();
       renderAll();
       refreshBellCount();
+      refreshAdminCommentBadge();
     }, 30000);
   }
   // showPage re-renders with loaded data
@@ -1079,7 +1080,7 @@ const afterLogin = async () => {
 };
 
 // ── Backup ────────────────────────────────────────────────────────────────────
-const BACKUP_TABLES = ['teachers','students','schedules','history','attendance_log','monthly_reports','notifications','notification_reads','audit_log','settings','custom_phrases'];
+const BACKUP_TABLES = ['teachers','students','schedules','history','attendance_log','monthly_reports','notifications','notification_reads','notification_comments','audit_log','settings','custom_phrases'];
 
 const downloadBackup = async () => {
   const statusEl = document.getElementById('backup-status');
@@ -4333,6 +4334,111 @@ const reviewReport = async (rid, status) => {
 // can see exactly WHO saw each reminder, even when it was sent to "All Teachers".
 let notifsCache = null;
 let myReadsMap = {};   // notification_id -> row in notification_reads (current teacher)
+let myCommentsMap = {}; // notification_id -> [comments by the current teacher]
+
+let editingCommentId = null;
+let adminCommentsSeenAt = null;   // ISO string; comments newer than this are "new" for the admin
+const isNewSince = (c, since) => !!since && (new Date(c.edited_at || c.created_at) > new Date(since));
+
+const commentsListHtml = (list, showName, since) => (list||[]).map(c => {
+  const isFresh = showName && isNewSince(c, since);
+  const edited = c.edited_at ? `<span class="badge badge-amber" style="margin-left:6px" title="Edited ${fmtNotifTime(c.edited_at)}">✏️ edited ${fmtNotifTime(c.edited_at)}</span>` : '';
+  const fresh = isFresh ? '<span class="badge badge-red" style="margin-left:6px">🆕 New</span>' : '';
+  const head = `<div class="f12 muted" style="margin-bottom:2px">${showName ? '<span class="bold">'+_esc(c.teacher_name)+'</span> · ' : ''}${fmtNotifTime(c.created_at)}${edited}${fresh}</div>`;
+  const border = isFresh ? 'var(--gold)' : 'var(--border)';
+  if (!showName && editingCommentId === c.id) {
+    return `<div style="background:var(--bg);border:1px solid var(--gold);border-radius:8px;padding:8px 12px;margin-bottom:6px">
+      ${head}
+      <textarea id="cm-edit-${c.id}" style="width:100%;min-height:60px;resize:vertical;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:13px;padding:8px;outline:none">${_esc(c.comment)}</textarea>
+      <div class="flex gap8" style="margin-top:6px">
+        <button class="btn-green" style="padding:4px 12px;font-size:12px" onclick="saveNotifCommentEdit('${c.id}','${c.notification_id}')">💾 Save</button>
+        <button class="btn-ghost" style="padding:4px 12px;font-size:12px" onclick="cancelNotifCommentEdit('${c.notification_id}')">Cancel</button>
+      </div></div>`;
+  }
+  const orig = (showName && c.edited_at && c.original_comment)
+    ? `<div class="f12 muted" style="margin-top:4px;white-space:pre-wrap">Original: ${_esc(c.original_comment)}</div>` : '';
+  const editBtn = !showName ? `<button class="btn-ghost" style="padding:2px 8px;font-size:11px;margin-top:4px" onclick="startNotifCommentEdit('${c.id}','${c.notification_id}')">✏️ Edit</button>` : '';
+  return `<div style="background:var(--bg);border:1px solid ${border};border-radius:8px;padding:8px 12px;margin-bottom:6px">
+    ${head}
+    <div class="f13" style="line-height:1.6;white-space:pre-wrap">${_esc(c.comment)}</div>${orig}${editBtn}
+  </div>`;
+}).join('');
+
+const rerenderComments = nid => {
+  const box = document.getElementById('cm-list-'+nid);
+  if (box) box.innerHTML = commentsListHtml(myCommentsMap[nid], false);
+};
+const startNotifCommentEdit = (cid, nid) => { editingCommentId = cid; rerenderComments(nid); };
+const cancelNotifCommentEdit = nid => { editingCommentId = null; rerenderComments(nid); };
+const saveNotifCommentEdit = async (cid, nid) => {
+  const c = (myCommentsMap[nid]||[]).find(x => x.id === cid);
+  const text = (document.getElementById('cm-edit-'+cid)?.value || '').trim();
+  if (!c || !text) return notify('Comment cannot be empty', false);
+  if (text === c.comment) return cancelNotifCommentEdit(nid);
+  const patch = { comment: text, edited_at: new Date().toISOString(), original_comment: c.original_comment || c.comment };
+  try {
+    await sbFetch(`notification_comments?id=eq.${encodeURIComponent(cid)}&teacher_id=eq.${encodeURIComponent(currentUser.teacherId)}`, {
+      method: 'PATCH', headers: { 'Prefer': 'return=minimal' }, body: JSON.stringify(patch)
+    });
+    Object.assign(c, patch);
+    editingCommentId = null;
+    rerenderComments(nid);
+    logAction('Edited comment on reminder', text.slice(0,80));
+    notify('✏️ Comment updated');
+  } catch(e) { notify('⚠️ ' + e.message + ' — did you add the edited_at / original_comment columns?', false); }
+};
+
+// ── Admin: notification when teachers comment / edit comments ─────────────────
+let _lastAdminCommentCount = null;
+const refreshAdminCommentBadge = async (first=false) => {
+  if (!isAdmin()) return;
+  try {
+    if (!adminCommentsSeenAt) {
+      adminCommentsSeenAt = await getSetting('mit_comments_seen_at');
+      if (!adminCommentsSeenAt) { adminCommentsSeenAt = new Date().toISOString(); await setSetting('mit_comments_seen_at', adminCommentsSeenAt); }
+    }
+    const since = encodeURIComponent(adminCommentsSeenAt);
+    const rows = await sbFetch(`notification_comments?or=(created_at.gt.${since},edited_at.gt.${since})&order=created_at.desc&select=id,teacher_name,edited_at,created_at`) || [];
+    const n = rows.length;
+    const badge = document.getElementById('notif-admin-badge');
+    if (badge) { badge.textContent = n; badge.style.display = n > 0 ? '' : 'none'; }
+    if (n > 0 && (first || (_lastAdminCommentCount !== null && n > _lastAdminCommentCount))) {
+      const r = rows[0];
+      const who = [...new Set(rows.map(x => x.teacher_name))].slice(0,3).join(', ');
+      notify(`💬 ${n} new comment${n>1?'s':''} on reminders (${who})`, true);
+      if (window.Notification && Notification.permission === 'granted' && !first) {
+        try { new Notification('New comment on a reminder', { body: `${r.teacher_name}${r.edited_at?' edited a comment':' commented'}` }); } catch(e) {}
+      }
+    }
+    _lastAdminCommentCount = n;
+  } catch(e) { /* non-fatal */ }
+};
+const markAdminCommentsSeen = async () => {
+  adminCommentsSeenAt = new Date().toISOString();
+  _lastAdminCommentCount = 0;
+  const badge = document.getElementById('notif-admin-badge');
+  if (badge) badge.style.display = 'none';
+  // Ask once for browser notifications (shown while the system is open in a tab)
+  try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch(e) {}
+  await setSetting('mit_comments_seen_at', adminCommentsSeenAt);
+};
+
+const addNotifComment = async (nid) => {
+  const input = document.getElementById('cm-in-'+nid);
+  const text = (input?.value || '').trim();
+  if (!text) return;
+  const tid = currentUser.teacherId;
+  const row = { id: uid()+Math.random().toString(36).slice(2,5), notification_id: nid, teacher_id: tid,
+                teacher_name: currentUser.displayName, comment: text, created_at: new Date().toISOString() };
+  try {
+    await sbFetch('notification_comments', { method: 'POST', body: JSON.stringify([row]) });
+    (myCommentsMap[nid] = myCommentsMap[nid] || []).push(row);
+    input.value = '';
+    rerenderComments(nid);
+    logAction('Commented on reminder', text.slice(0,80));
+    notify('💬 Comment sent');
+  } catch(e) { notify('⚠️ ' + e.message + ' — did you create the notification_comments table?', false); }
+};
 
 const notifBodyHtml = n => n.kind === 'salary'
   ? `<div style="white-space:pre-wrap;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.7;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;overflow-x:auto">${_esc(n.message)}</div>`
@@ -4352,10 +4458,13 @@ const loadMyNotifs = async (forceRefresh=false) => {
   if (!notifsCache || forceRefresh) {
     el.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">Loading…</div>';
     try {
-      const [rows, reads] = await Promise.all([
+      const [rows, reads, cms] = await Promise.all([
         sbFetch(`notifications?or=(to_teacher_id.eq.${encodeURIComponent(tid)},to_teacher_id.eq.all)&order=created_at.desc&select=*`),
-        sbFetch(`notification_reads?teacher_id=eq.${encodeURIComponent(tid)}&select=*`)
+        sbFetch(`notification_reads?teacher_id=eq.${encodeURIComponent(tid)}&select=*`),
+        sbFetch(`notification_comments?teacher_id=eq.${encodeURIComponent(tid)}&order=created_at.asc&select=*`).catch(()=>[])
       ]);
+      myCommentsMap = {};
+      (cms||[]).forEach(c => { (myCommentsMap[c.notification_id] = myCommentsMap[c.notification_id] || []).push(c); });
       notifsCache = rows || [];
       myReadsMap = {};
       (reads||[]).forEach(r => { myReadsMap[r.notification_id] = r; });
@@ -4407,6 +4516,14 @@ const loadMyNotifs = async (forceRefresh=false) => {
         ${!isDone ? `<button class="btn-green" style="padding:5px 14px;font-size:12px" onclick="markNotifDone('${n.id}')">✅ Done</button>` : ''}
       </div>
       ${notifBodyHtml(n)}
+      <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px">
+        <div id="cm-list-${n.id}">${commentsListHtml(myCommentsMap[n.id], false)}</div>
+        <div class="flex gap8" style="margin-top:6px">
+          <input id="cm-in-${n.id}" placeholder="💬 Write a comment…" style="flex:1"
+            onkeydown="if(event.key==='Enter'){addNotifComment('${n.id}')}"/>
+          <button class="btn-ghost" onclick="addNotifComment('${n.id}')">Send</button>
+        </div>
+      </div>
     </div>`;
   }).join('');
 };
@@ -4483,6 +4600,8 @@ const sendNotification = async () => {
 const loadSentNotifs = async (forceRefresh=false) => {
   const el = document.getElementById('sent-notifs-list');
   if (!el) return;
+  if (!adminCommentsSeenAt) { try { adminCommentsSeenAt = await getSetting('mit_comments_seen_at'); } catch(e) {} }
+  const commentsSince = adminCommentsSeenAt;
   el.innerHTML = '<div class="muted f13" style="padding:8px 0">Loading…</div>';
   try {
     const rows = await sbFetch('notifications?order=created_at.desc&select=*&limit=100');
@@ -4493,6 +4612,11 @@ const loadSentNotifs = async (forceRefresh=false) => {
     let reads = [];
     try { reads = ids.length ? (await sbFetch(`notification_reads?notification_id=in.(${ids.join(',')})&select=*`)) || [] : []; }
     catch(e) { reads = []; }
+    let cms = [];
+    try { cms = ids.length ? (await sbFetch(`notification_comments?notification_id=in.(${ids.join(',')})&order=created_at.asc&select=*`)) || [] : []; }
+    catch(e) { cms = []; }
+    const commentsBy = {};
+    cms.forEach(c => { (commentsBy[c.notification_id] = commentsBy[c.notification_id] || []).push(c); });
     const readsBy = {};   // notification_id -> teacher_id -> row
     reads.forEach(r => { (readsBy[r.notification_id] = readsBy[r.notification_id] || {})[r.teacher_id] = r; });
 
@@ -4533,8 +4657,13 @@ const loadSentNotifs = async (forceRefresh=false) => {
         </div>
         <div class="mb8">${notifBodyHtml(n)}</div>
         ${legacyDone && isAll ? '' : `<div class="flex flex-wrap gap8">${chips.join('')}</div>`}
+        ${(commentsBy[n.id]||[]).length ? `<div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px">
+          <div class="f12 gold bold" style="margin-bottom:6px">💬 Comments (${commentsBy[n.id].length})</div>
+          ${commentsListHtml(commentsBy[n.id], true, commentsSince)}
+        </div>` : ''}
       </div>`;
     }).join('');
+    markAdminCommentsSeen();
   } catch(e) { el.innerHTML = `<div class="card muted" style="text-align:center;padding:30px">⚠️ ${e.message}</div>`; }
 };
 
@@ -4542,6 +4671,7 @@ const deleteNotification = async (nid) => {
   if (!confirm('Delete this reminder?')) return;
   try {
     await sbFetch(`notification_reads?notification_id=eq.${nid}`, { method: 'DELETE' }).catch(()=>{});
+    await sbFetch(`notification_comments?notification_id=eq.${nid}`, { method: 'DELETE' }).catch(()=>{});
     await sbFetch(`notifications?id=eq.${nid}`, { method: 'DELETE' });
     notify('Reminder deleted');
     loadSentNotifs(true);
