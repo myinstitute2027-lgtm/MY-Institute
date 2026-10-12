@@ -5093,6 +5093,10 @@ const renderMyReports = async () => {
 
 // ── Monthly report helpers (shared by teacher / admin / student views) ─────────
 const RPF = { t:'', s:'' };
+// Month of a report (falls back to created_at for old rows without month_key)
+const rpMonthKey = r => { if (r.month_key) return r.month_key; const d=new Date(r.created_at); return isNaN(d)?'unknown':`${d.getFullYear()}-${d.getMonth()+1}`; };
+const rpMonthNum = k => { const [y,m]=String(k).split('-').map(Number); return (y||0)*100+(m||0); };
+const RP_ARCH = { all:false, months:{} };   // remembers which archive sections are open across re-renders
 const rpAvg = r => { const k=[...GRADE_KEYS,'exam']; return (k.reduce((a,x)=>a+(parseFloat(r.grades?.[x])||0),0)/k.length).toFixed(1); };
 const rpTone = n => n>=7?'var(--green)':n>=5?'var(--gold)':'var(--red)';
 const rpBold = t => _esc(t).replace(/\*([^*\n]+)\*/g,'<b>$1</b>');
@@ -5109,7 +5113,7 @@ const rpReportMsg = r => { const p=r.progress||{}, g=r.grades||{};
     `⭐ Average: ${rpAvg(r)}/10`, p.comment ? `\n📝 Teacher's Comment: ${p.comment}` : '', '', `💛 ${INSTITUTE_NAME} 🌟`, rcBrand().website||''].join('\n'); };
 const rpSetFilter = (k,v) => { RPF[k]=v; loadReports(); };
 const approveAllReports = async () => {
-  const ids = reportsCache.filter(r=>r.status==='pending' && (!RPF.t||r.teacher_name===RPF.t)).map(r=>r.id);
+  const ids = reportsCache.filter(r=>r.status==='pending' && rpMonthKey(r)===currentMonthKey() && (!RPF.t||r.teacher_name===RPF.t)).map(r=>r.id);
   if (!ids.length || !confirm(`Approve ${ids.length} pending report(s)?`)) return;
   try {
     await sbFetch(`monthly_reports?id=in.(${ids.map(encodeURIComponent).join(',')})`, { method:'PATCH', headers:{'Prefer':'return=minimal'},
@@ -5429,9 +5433,13 @@ const loadReports = async (forceRefresh=false) => {
   if (!reportsCache.length) { el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">No reports yet.</div>'; return; }
 
   const teachersList = [...new Set(reportsCache.map(r=>r.teacher_name).filter(Boolean))].sort();
-  const list = reportsCache.filter(r=>(!RPF.t||r.teacher_name===RPF.t)&&(!RPF.s||r.status===RPF.s))
-    .sort((a,b)=>(a.status==='pending'?0:1)-(b.status==='pending'?0:1));
-  const cnt = s => reportsCache.filter(r=>r.status===s).length;
+  const curKey = currentMonthKey();
+  const curAll = reportsCache.filter(r=>rpMonthKey(r)===curKey);          // this month only
+  const oldAll = reportsCache.filter(r=>rpMonthKey(r)!==curKey);          // previous months → archive
+  const passes = r => (!RPF.t||r.teacher_name===RPF.t)&&(!RPF.s||r.status===RPF.s);
+  const list = curAll.filter(passes).sort((a,b)=>(a.status==='pending'?0:1)-(b.status==='pending'?0:1));
+  const oldList = oldAll.filter(passes);
+  const cnt = s => curAll.filter(r=>r.status===s).length;
   const stat = (v,l,c='') => `<div class="dl-stat"><div class="dl-stat-v ${c}">${v}</div><div class="dl-stat-l">${l}</div></div>`;
   const pendInView = list.filter(r=>r.status==='pending').length;
 
@@ -5464,12 +5472,31 @@ const loadReports = async (forceRefresh=false) => {
       </div></details>`;
   };
 
-  el.innerHTML = `<div class="dl-stats">${stat(cnt('pending'),'Pending',cnt('pending')?'gold':'')}${stat(cnt('approved'),'Approved','green')}${stat(cnt('rejected'),'Rejected',cnt('rejected')?'red':'')}${stat((reportsCache.reduce((a,r)=>a+parseFloat(rpAvg(r)),0)/reportsCache.length).toFixed(1),'Avg grade')}</div>
+  // ── Archive: previous months, grouped by month (newest first) ──
+  const groups = {};
+  oldList.forEach(r => { (groups[rpMonthKey(r)] = groups[rpMonthKey(r)] || []).push(r); });
+  const monthKeys = Object.keys(groups).sort((a,b)=>rpMonthNum(b)-rpMonthNum(a));
+  const archHTML = oldAll.length ? `<details class="rp-arch" style="margin-top:20px" ${RP_ARCH.all?'open':''} ontoggle="RP_ARCH.all=this.open">
+      <summary class="f14 bold gold" style="cursor:pointer;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:12px">
+        🗂️ Archive — previous months (${oldAll.length})${oldAll.some(r=>r.status==='pending')?` <span class="badge badge-amber" style="margin-inline-start:8px">⏳ ${oldAll.filter(r=>r.status==='pending').length} pending</span>`:''}
+      </summary>
+      <div style="margin-top:10px">${monthKeys.length ? monthKeys.map(k => {
+        const rs = groups[k], lbl = rs[0].month_label || k, pend = rs.filter(r=>r.status==='pending').length;
+        return `<details style="margin-bottom:10px" ${RP_ARCH.months[k]?'open':''} ontoggle="RP_ARCH.months['${k}']=this.open">
+          <summary class="f13 bold" style="cursor:pointer;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:10px">
+            📅 ${_esc(lbl)} <span class="muted f12">· ${rs.length} report${rs.length>1?'s':''}</span>${pend?` <span class="badge badge-amber" style="margin-inline-start:6px">⏳ ${pend}</span>`:''}
+          </summary>
+          <div style="margin-top:8px">${rs.map(renderReport).join('')}</div>
+        </details>`; }).join('') : '<div class="card muted" style="text-align:center;padding:20px">No archived reports match this filter.</div>'}</div>
+    </details>` : '';
+
+  el.innerHTML = `<div class="f13 bold gold mb8">📅 ${_esc(currentMonthLabel())}</div>
+    <div class="dl-stats">${stat(cnt('pending'),'Pending',cnt('pending')?'gold':'')}${stat(cnt('approved'),'Approved','green')}${stat(cnt('rejected'),'Rejected',cnt('rejected')?'red':'')}${stat(curAll.length?(curAll.reduce((a,r)=>a+parseFloat(rpAvg(r)),0)/curAll.length).toFixed(1):'—','Avg grade')}</div>
     <div class="flex gap8 flex-wrap items-center mb12">
       <select style="width:auto" onchange="rpSetFilter('t',this.value)"><option value="">All teachers</option>${teachersList.map(t=>`<option ${RPF.t===t?'selected':''} value="${_esc(t)}">${_esc(t)}</option>`).join('')}</select>
       <select style="width:auto" onchange="rpSetFilter('s',this.value)">${[['','All statuses'],['pending','Pending'],['approved','Approved'],['rejected','Rejected']].map(([v,l])=>`<option value="${v}" ${RPF.s===v?'selected':''}>${l}</option>`).join('')}</select>
       ${pendInView?`<button class="btn-green" style="margin-inline-start:auto" onclick="approveAllReports()">✅ Approve all pending (${pendInView})</button>`:''}
-    </div>` + (list.map(renderReport).join('') || '<div class="card muted" style="text-align:center;padding:30px">No reports match this filter.</div>');
+    </div>` + (list.map(renderReport).join('') || `<div class="card muted" style="text-align:center;padding:30px">${curAll.length?'No reports match this filter.':'No reports for this month yet.'}</div>`) + archHTML;
 };
 
 const reviewReport = async (rid, status) => {
@@ -6152,7 +6179,8 @@ const loadStudentReports = async () => {
     const rows = await sbFetch(`monthly_reports?student_id=eq.${encodeURIComponent(currentUser.studentId)}&status=eq.approved&order=created_at.desc&select=*`);
     if (!rows || !rows.length) { el.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">No reports yet. Your monthly report will appear here once it is ready.</div>'; return; }
     window.__stuRows = rows;
-    el.innerHTML = rows.map((r,i) => {
+    const curKey = currentMonthKey();
+    const stuCard = (r,i) => {
       const p = r.progress||{}, avg = parseFloat(rpAvg(r)), prev = rows[i+1] ? parseFloat(rpAvg(rows[i+1])) : null;
       const d = prev===null ? null : avg-prev;
       return `<div class="card mb12">
@@ -6168,7 +6196,11 @@ const loadStudentReports = async () => {
         <div class="rm-bars">${rpBars(r.grades)}</div>
         ${p.comment?`<div class="rm-comment" style="margin-top:12px">📝 ${_esc(p.comment)}</div>`:''}
       </div>`;
-    }).join('');
+    };
+    const curRows = rows.map((r,i)=>[r,i]).filter(([r])=>rpMonthKey(r)===curKey);
+    const oldRows = rows.map((r,i)=>[r,i]).filter(([r])=>rpMonthKey(r)!==curKey);
+    el.innerHTML = (curRows.length ? curRows.map(([r,i])=>stuCard(r,i)).join('') : '<div class="card muted" style="text-align:center;padding:30px">Your report for this month is not ready yet.</div>')
+      + (oldRows.length ? `<details style="margin-top:16px"><summary class="f14 bold gold" style="cursor:pointer;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:12px">🗂️ Archive — previous months (${oldRows.length})</summary><div style="margin-top:10px">${oldRows.map(([r,i])=>stuCard(r,i)).join('')}</div></details>` : '');
   } catch(e) { el.innerHTML = `<div class="card" style="text-align:center;padding:40px;color:var(--red)">⚠️ ${_esc(e.message)}</div>`; }
 };
 
