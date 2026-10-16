@@ -3169,7 +3169,9 @@ const closeAttendanceModal = () => {
   document.getElementById('attendance-overlay').classList.remove('open');
 };
 
-const todayDateKey = () => new Date().toISOString().slice(0,10);
+// Day key in Cairo time (en-CA gives YYYY-MM-DD). Using UTC caused wrong "today" between 12-3am Egypt time.
+const dayKeyOf = d => new Date(d).toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+const todayDateKey = () => dayKeyOf(Date.now());
 
 // ── Homework builder (essay / multiple-choice questions) ─────────────────────
 // Every question must be given a category (فقه / حديث / تجويد …). Questions are also
@@ -3305,97 +3307,105 @@ const submitAttendance = async () => {
     return;
   }
   const homework = hwRes.text;
-  const attId = uid();
 
   const stu = students.find(s => s.id === sid);
   if (!stu) return;
 
-  // Check if already logged today
+  // Block double-clicks / double-taps while a submission is already running
+  if (window._attSubmitting) return;
+  window._attSubmitting = true;
+  const submitBtn = document.querySelector('#attendance-overlay .btn-gold');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.style.opacity = '0.6'; }
+  const unlock = () => {
+    window._attSubmitting = false;
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.style.opacity = ''; }
+  };
+
   try {
-    const existing = await sbFetch(`attendance_log?student_id=eq.${sid}&select=id,logged_at`);
     const todayKey = todayDateKey();
-    const alreadyToday = (existing||[]).some(r => (r.logged_at||'').slice(0,10) === todayKey && !(r.note||'').startsWith('❌ ABSENT'));
-    if (alreadyToday) {
-      errEl.textContent = '⚠️ Already logged today. You can log again tomorrow.';
-      errEl.style.display = 'block';
-      return;
-    }
-  } catch(e) { /* non-fatal */ }
+    const attId = 'att_' + sid + '_' + todayKey;   // one fixed ID per student per day -> the database itself rejects a 2nd one
+    const dupMsg = '⚠️ Attendance for this student was already logged today.';
 
-  // Step 1: Read the REAL current hours_used from DB (not local cache).
-  // This is the key fix for the race condition — each submission reads the live
-  // value from Supabase before writing, so concurrent submissions never overwrite each other.
-  let freshHoursUsed;
-  try {
-    const fresh = await sbFetch(`students?id=eq.${sid}&select=hours_used`);
-    if (!fresh || !fresh[0]) throw new Error('Student not found');
-    freshHoursUsed = parseFloat(fresh[0].hours_used) || 0;
-  } catch(e) {
-    errEl.textContent = '⚠️ Could not read current hours from database. Please try again.';
-    errEl.style.display = 'block';
-    return;
-  }
-
-  const newHoursUsed = freshHoursUsed + hours;
-
-  // Step 2: Write the new value based on the fresh DB value
-  // Use return=representation so we get the updated row back — if RLS blocks
-  // the update, Supabase returns an empty array instead of throwing, so we
-  // can detect the silent failure and stop before logging attendance.
-  try {
-    const updated = await sbFetch(`students?id=eq.${sid}`, {
-      method: 'PATCH',
-      headers: { 'Prefer': 'return=representation' },
-      body: JSON.stringify({ hours_used: newHoursUsed })
-    });
-    if (!updated || !updated.length) {
-      errEl.textContent = '⚠️ Could not deduct hours — database did not confirm the update. Please contact the admin.';
-      errEl.style.display = 'block';
-      return;
-    }
-    students = students.map(s => s.id === sid ? {...s, hoursUsed: newHoursUsed} : s);
-  } catch(e) {
-    errEl.textContent = '⚠️ Could not save the hours to the database. Please try again.';
-    errEl.style.display = 'block';
-    return;
-  }
-
-  // Step 3: Save attendance log — if this fails, rollback using the fresh value we read
-  try {
-    await sbFetch('attendance_log', {
-      method: 'POST',
-      body: JSON.stringify([{
-        id: attId,
-        student_id: sid,
-        student_name: stu.name,
-        teacher_id: currentUser.teacherId || null,
-        teacher_name: currentUser.displayName,
-        hours,
-        note: homework + (note ? ' | Note: ' + note : ''),
-        logged_at: new Date().toISOString(),
-        seen_by_admin: false
-      }])
-    });
-    attendanceCache = null;
-  } catch(e) {
-    // Rollback: restore the value we read from DB before our write
-    students = students.map(s => s.id === sid ? {...s, hoursUsed: freshHoursUsed} : s);
+    // Check 1: look for an existing (non-absent) record today, by ANY teacher
+    let existing;
     try {
-      await sbFetch(`students?id=eq.${sid}`, {
-        method: 'PATCH',
-        headers: { 'Prefer': 'return=minimal' },
-        body: JSON.stringify({ hours_used: freshHoursUsed })
-      });
-    } catch(_) { /* best effort rollback */ }
-    errEl.textContent = '⚠️ Could not save the attendance log. Hours were NOT deducted. Please try again.';
-    errEl.style.display = 'block';
-    return;
-  }
+      existing = await sbFetch(`attendance_log?student_id=eq.${sid}&select=id,logged_at,note&order=logged_at.desc&limit=50`);
+    } catch(e) {
+      errEl.textContent = '⚠️ Could not verify today\'s attendance. Please check your connection and try again.';
+      errEl.style.display = 'block';
+      return;
+    }
+    const alreadyToday = (existing||[]).some(r => dayKeyOf(r.logged_at) === todayKey && !(r.note||'').startsWith('❌ ABSENT'));
+    if (alreadyToday) {
+      errEl.textContent = dupMsg;
+      errEl.style.display = 'block';
+      attendanceCache = null;
+      renderAll();
+      return;
+    }
 
-  await saveQuestionsToBank(hwRes.items, stu, attId);
-  closeAttendanceModal();
-  notify(`✅ ${hours}h logged for ${stu.name}`);
-  renderAll();
+    // Step 1: Insert the log FIRST. The fixed ID acts as a lock: if another tab/device/teacher
+    // inserted the same student-day a moment ago, this fails with 409 and nothing is deducted.
+    try {
+      await sbFetch('attendance_log', {
+        method: 'POST',
+        body: JSON.stringify([{
+          id: attId,
+          student_id: sid,
+          student_name: stu.name,
+          teacher_id: currentUser.teacherId || null,
+          teacher_name: currentUser.displayName,
+          hours,
+          note: homework + (note ? ' | Note: ' + note : ''),
+          logged_at: new Date().toISOString(),
+          seen_by_admin: false
+        }])
+      });
+      attendanceCache = null;
+    } catch(e) {
+      const isDup = /409|23505|duplicate/i.test(e.message || '');
+      errEl.textContent = isDup ? dupMsg : '⚠️ Could not save the attendance log. Hours were NOT deducted. Please try again.';
+      errEl.style.display = 'block';
+      if (isDup) { attendanceCache = null; renderAll(); }
+      return;
+    }
+
+    // Step 2: Deduct hours using the live DB value. If this fails, remove the log we just added.
+    const undoLog = async () => { try { await sbFetch(`attendance_log?id=eq.${attId}`, { method: 'DELETE' }); } catch(_) {} attendanceCache = null; };
+    let freshHoursUsed;
+    try {
+      const fresh = await sbFetch(`students?id=eq.${sid}&select=hours_used`);
+      if (!fresh || !fresh[0]) throw new Error('Student not found');
+      freshHoursUsed = parseFloat(fresh[0].hours_used) || 0;
+    } catch(e) {
+      await undoLog();
+      errEl.textContent = '⚠️ Could not read current hours from database. Nothing was saved, please try again.';
+      errEl.style.display = 'block';
+      return;
+    }
+    const newHoursUsed = freshHoursUsed + hours;
+    try {
+      const updated = await sbFetch(`students?id=eq.${sid}`, {
+        method: 'PATCH',
+        headers: { 'Prefer': 'return=representation' },
+        body: JSON.stringify({ hours_used: newHoursUsed })
+      });
+      if (!updated || !updated.length) throw new Error('not confirmed');
+      students = students.map(s => s.id === sid ? {...s, hoursUsed: newHoursUsed} : s);
+    } catch(e) {
+      await undoLog();
+      errEl.textContent = '⚠️ Could not deduct hours — nothing was saved. Please try again or contact the admin.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    await saveQuestionsToBank(hwRes.items, stu, attId);
+    closeAttendanceModal();
+    notify(`✅ ${hours}h logged for ${stu.name}`);
+    renderAll();
+  } finally {
+    unlock();
+  }
 };
 
 
@@ -3532,8 +3542,8 @@ const loadAttendance = async (forceRefresh=false) => {
 
   // Split today vs history
   const todayKey = todayDateKey();
-  const todayRows = attendanceCache.filter(r => (r.logged_at||'').slice(0,10) === todayKey);
-  const historyRows = attendanceCache.filter(r => (r.logged_at||'').slice(0,10) !== todayKey);
+  const todayRows = attendanceCache.filter(r => dayKeyOf(r.logged_at) === todayKey);
+  const historyRows = attendanceCache.filter(r => dayKeyOf(r.logged_at) !== todayKey);
 
   // Update notification bell (only today's unseen)
   const unseen = todayRows.filter(r => !r.seen_by_admin);
@@ -3621,7 +3631,7 @@ const loadAttendance = async (forceRefresh=false) => {
   }
 
   if (historyRows.length > 0) {
-    const days = groupBy(historyRows.slice(0,150), r=>(r.logged_at||'').slice(0,10));
+    const days = groupBy(historyRows.slice(0,150), r=>dayKeyOf(r.logged_at));
     html += `<details style="margin-top:16px"><summary class="f13 muted" style="cursor:pointer;padding:8px 0">🗂️ Previous Days (${historyRows.length} records)</summary><div class="mt8">` +
       days.map(([day,rows]) => {
         const lbl = new Date(day+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
@@ -3858,8 +3868,8 @@ const renderMyStudents = async () => {
   let todayLogged = new Set();
   try {
     const todayKey = todayDateKey();
-    const rows = await sbFetch(`attendance_log?teacher_id=eq.${currentUser.teacherId}&select=student_id,logged_at`);
-    (rows||[]).forEach(r => { if ((r.logged_at||'').slice(0,10) === todayKey && !(r.note||'').startsWith('❌ ABSENT')) todayLogged.add(r.student_id); });
+    const rows = await sbFetch(`attendance_log?teacher_id=eq.${currentUser.teacherId}&select=student_id,logged_at,note&order=logged_at.desc&limit=300`);
+    (rows||[]).forEach(r => { if (dayKeyOf(r.logged_at) === todayKey && !(r.note||'').startsWith('❌ ABSENT')) todayLogged.add(r.student_id); });
   } catch(e) { /* non-fatal */ }
 
   el.innerHTML = myStudents.map(s=>{
