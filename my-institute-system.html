@@ -3641,15 +3641,30 @@ const loadAttendance = async (forceRefresh=false) => {
       ${stat(fmtH(totalTodayH)+'h','Hours today','gold', adminToday.length ? `incl. ${adminTodayH>0?'+':''}${fmtH(adminTodayH)}h admin` : '')}
       ${stat(new Set(todayRows.map(r=>r.teacher_name)).size,'Teachers')}
     </div>`;
-    if (adminToday.length) {
-      html += `<details class="dl-day" style="margin-bottom:14px" open><summary><span class="bold">🛠️ Admin hour adjustments today</span><span class="muted f12">${adminToday.length} · ${adminTodayH>0?'+':''}${fmtH(adminTodayH)}h</span></summary>` +
-        adminToday.map(r => {
-          const d = new Date(r.at); const when = isNaN(d) ? '' : d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
-          return `<div class="dl-row" style="border-inline-start-color:var(--gold)"><div class="dl-head"><div class="dl-who"><div class="bold f14">${_esc(r.student)}</div><div class="f12 muted">${_esc(r.by||'')} · ${when}</div></div><div class="dl-chips"><span class="badge ${r.hours<0?'badge-green':'badge-amber'} f12">${r.hours>0?'+':''}${fmtH(r.hours)}h</span></div></div></div>`;
-        }).join('') + `</details>`;
-    }
     html += `<div class="f14 bold mb8">📅 Today — ${new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</div>`;
     if (todayRows.length) html += `<div class="dl-group">${[...todayRows].sort((a,b)=>(b.logged_at||'').localeCompare(a.logged_at||'')).map(r=>renderRow(r,true)).join('')}</div>`;
+
+    // ── Hours today, split by teacher (attendance hours + admin adjustments) ──
+    const teacherOfStudent = (sid, fallbackName, byName) => {
+      const stu = students.find(x => x.id === sid) || (byName ? students.find(x => x.name === byName) : null);
+      const t = stu ? teachers.find(x => x.id === stu.teacherId) : null;
+      return t ? t.name : (fallbackName || 'Unassigned');
+    };
+    const byTeacher = new Map();
+    const bucket = n => { if (!byTeacher.has(n)) byTeacher.set(n, { att:0, adm:0, adjustments:[] }); return byTeacher.get(n); };
+    todayRows.forEach(r => { bucket(teacherOfStudent(r.student_id, r.teacher_name)).att += parseFloat(r.hours)||0; });
+    adminToday.forEach(r => { const b = bucket(teacherOfStudent(null, '', r.student)); b.adm += r.hours; b.adjustments.push(r); });
+    const sign = n => (n>0?'+':'') + fmtH(n) + 'h';
+    html += `<div class="f14 bold mb8" style="margin-top:20px">⏱️ Hours today by teacher</div>` +
+      [...byTeacher.entries()].sort((x,y)=>(y[1].att+y[1].adm)-(x[1].att+x[1].adm)).map(([name,b]) => `
+        <div class="dl-group">
+          <div class="dl-group-h"><span>👩‍🏫 ${_esc(name)}</span><span>${fmtH(b.att+b.adm)}h</span></div>
+          <div class="dl-row" style="border-inline-start-color:var(--green)"><div class="dl-head"><div class="dl-who"><div class="f13">Attendance hours</div></div><div class="dl-chips"><span class="badge badge-green f12">${fmtH(b.att)}h</span></div></div></div>
+          ${b.adjustments.length ? `<div class="dl-row" style="border-inline-start-color:var(--gold)"><div class="dl-head"><div class="dl-who"><div class="f13">Admin adjustments</div></div><div class="dl-chips"><span class="badge badge-amber f12">${sign(b.adm)}</span></div></div>` +
+            b.adjustments.map(r => { const d=new Date(r.at); const when=isNaN(d)?'':d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+              return `<div class="f12 muted mt4">• ${_esc(r.student)} · ${sign(r.hours)} · ${_esc(r.by||'')} · ${when}</div>`; }).join('') + `</div>` : ''}
+        </div>`).join('') +
+      `<div class="f13 muted mb12" style="text-align:end">Total: <b>${fmtH(totalTodayH)}h</b></div>`;
   }
 
   if (historyRows.length > 0) {
