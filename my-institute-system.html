@@ -2417,12 +2417,13 @@ const deleteStudent = async sid => {
   logAction('Removed student', s?.name||sid);
 };
 
-const logHours = (sid,delta) => {
+const logHours = async (sid,delta) => {
   const h=parseFloat(document.getElementById('hrs-'+sid)?.value)||1;
   const s = students.find(s=>s.id===sid);
   students=students.map(s=> s.id!==sid?s:{...s,hoursUsed:Math.max(0,(s.hoursUsed||0)+h*delta)});
   persist(); renderAll();
-  logAction(delta>0?'Logged hours':'Removed hours', `${s?.name||sid}: ${delta>0?'+':'-'}${h}h`);
+  await logAction(delta>0?'Logged hours':'Removed hours', `${s?.name||sid}: ${delta>0?'+':'-'}${h}h`);
+  adminHoursCache = null; // so "Hours today" in the Attendance page includes this admin adjustment
 };
 
 const topUpHours = sid => {
@@ -3154,6 +3155,7 @@ const renderAuditLog = async (forceRefresh=false) => {
 
 // ── Attendance Log ─────────────────────────────────────────────────────────────
 let attendanceCache = null;
+let adminHoursCache = null; // admin manual hour adjustments (from audit_log), used for the daily total
 
 const openAttendanceModal = (sid, name) => {
   document.getElementById('attendance-sid').value = sid;
@@ -3529,11 +3531,20 @@ const deleteBankQuestion = async key => {
 const loadAttendance = async (forceRefresh=false) => {
   const el = document.getElementById('attendance-content');
   if (!el) return;
-  if (!attendanceCache || forceRefresh) {
+  if (!attendanceCache || !adminHoursCache || forceRefresh) {
     el.innerHTML = '<div class="card muted" style="text-align:center;padding:40px">Loading…</div>';
     try {
       const rows = await sbFetch('attendance_log?select=*&order=logged_at.desc&limit=500');
       attendanceCache = rows || [];
+      // Admin manual deductions (+ Add / − Remove on the Students page) are stored in audit_log
+      try {
+        const aud = await sbFetch('audit_log?select=at,user_name,action,details&order=at.desc&limit=500');
+        adminHoursCache = (aud||[]).filter(r => r.action==='Logged hours' || r.action==='Removed hours').map(r => {
+          const m = String(r.details||'').match(/^(.*):\s*([+-])\s*([\d.]+)h\s*$/);
+          if (!m) return null;
+          return { at:r.at, by:r.user_name, student:m[1], hours:(m[2]==='-'?-1:1)*(parseFloat(m[3])||0) };
+        }).filter(Boolean);
+      } catch(_) { adminHoursCache = adminHoursCache || []; }
     } catch(e) {
       el.innerHTML = `<div class="card" style="text-align:center;padding:40px;color:var(--red)">⚠️ ${e.message}</div>`;
       return;
@@ -3614,20 +3625,31 @@ const loadAttendance = async (forceRefresh=false) => {
   const groupBy = (rows, fn) => { const m = new Map(); rows.forEach(r => { const k = fn(r); if (!m.has(k)) m.set(k, []); m.get(k).push(r); }); return [...m.entries()]; };
   const sumH = rows => rows.reduce((a,r)=>a+(parseFloat(r.hours)||0),0);
 
+  const adminToday = (adminHoursCache||[]).filter(r => dayKeyOf(r.at) === todayKey);
+  const adminTodayH = adminToday.reduce((a,r)=>a+r.hours,0);
+  const fmtH = n => String(Math.round(n*100)/100);
   let html = '';
-  if (!todayRows.length) {
+  if (!todayRows.length && !adminToday.length) {
     html += '<div class="card muted mb12" style="text-align:center;padding:30px">No attendance logged today yet.</div>';
   } else {
     const absN = todayRows.filter(isAbs).length;
-    const stat = (v,l,c='') => `<div class="dl-stat"><div class="dl-stat-v ${c}">${v}</div><div class="dl-stat-l">${l}</div></div>`;
+    const stat = (v,l,c='',sub='') => `<div class="dl-stat"><div class="dl-stat-v ${c}">${v}</div><div class="dl-stat-l">${l}</div>${sub?`<div class="f12 muted" style="margin-top:2px">${sub}</div>`:''}</div>`;
+    const totalTodayH = sumH(todayRows) + adminTodayH;
     html += `<div class="dl-stats">
       ${stat(todayRows.length-absN,'Present','green')}
       ${stat(absN,'Absent',absN?'red':'')}
-      ${stat(sumH(todayRows)+'h','Hours today','gold')}
+      ${stat(fmtH(totalTodayH)+'h','Hours today','gold', adminToday.length ? `incl. ${adminTodayH>0?'+':''}${fmtH(adminTodayH)}h admin` : '')}
       ${stat(new Set(todayRows.map(r=>r.teacher_name)).size,'Teachers')}
     </div>`;
+    if (adminToday.length) {
+      html += `<details class="dl-day" style="margin-bottom:14px" open><summary><span class="bold">🛠️ Admin hour adjustments today</span><span class="muted f12">${adminToday.length} · ${adminTodayH>0?'+':''}${fmtH(adminTodayH)}h</span></summary>` +
+        adminToday.map(r => {
+          const d = new Date(r.at); const when = isNaN(d) ? '' : d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+          return `<div class="dl-row" style="border-inline-start-color:var(--gold)"><div class="dl-head"><div class="dl-who"><div class="bold f14">${_esc(r.student)}</div><div class="f12 muted">${_esc(r.by||'')} · ${when}</div></div><div class="dl-chips"><span class="badge ${r.hours<0?'badge-green':'badge-amber'} f12">${r.hours>0?'+':''}${fmtH(r.hours)}h</span></div></div></div>`;
+        }).join('') + `</details>`;
+    }
     html += `<div class="f14 bold mb8">📅 Today — ${new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</div>`;
-    html += `<div class="dl-group">${[...todayRows].sort((a,b)=>(b.logged_at||'').localeCompare(a.logged_at||'')).map(r=>renderRow(r,true)).join('')}</div>`;
+    if (todayRows.length) html += `<div class="dl-group">${[...todayRows].sort((a,b)=>(b.logged_at||'').localeCompare(a.logged_at||'')).map(r=>renderRow(r,true)).join('')}</div>`;
   }
 
   if (historyRows.length > 0) {
