@@ -3538,11 +3538,14 @@ const loadAttendance = async (forceRefresh=false) => {
       attendanceCache = rows || [];
       // Admin manual deductions (+ Add / − Remove on the Students page) are stored in audit_log
       try {
-        const aud = await sbFetch('audit_log?select=at,user_name,action,details&order=at.desc&limit=500');
+        const aud = await sbFetch('audit_log?select=id,at,user_name,action,details&order=at.desc&limit=500');
+        const seenAdm = new Set();
         adminHoursCache = (aud||[]).filter(r => r.action==='Logged hours' || r.action==='Removed hours').map(r => {
+          if (seenAdm.has(r.id)) return null; // count each admin entry only once
+          seenAdm.add(r.id);
           const m = String(r.details||'').match(/^(.*):\s*([+-])\s*([\d.]+)h\s*$/);
           if (!m) return null;
-          return { at:r.at, by:r.user_name, student:m[1], hours:(m[2]==='-'?-1:1)*(parseFloat(m[3])||0) };
+          return { id:r.id, at:r.at, by:r.user_name, student:m[1], hours:(m[2]==='-'?-1:1)*(parseFloat(m[3])||0) };
         }).filter(Boolean);
       } catch(_) { adminHoursCache = adminHoursCache || []; }
     } catch(e) {
@@ -3662,7 +3665,7 @@ const loadAttendance = async (forceRefresh=false) => {
           <div class="dl-row" style="border-inline-start-color:var(--green)"><div class="dl-head"><div class="dl-who"><div class="f13">Attendance hours</div></div><div class="dl-chips"><span class="badge badge-green f12">${fmtH(b.att)}h</span></div></div></div>
           ${b.adjustments.length ? `<div class="dl-row" style="border-inline-start-color:var(--gold)"><div class="dl-head"><div class="dl-who"><div class="f13">Admin adjustments</div></div><div class="dl-chips"><span class="badge badge-amber f12">${sign(b.adm)}</span></div></div>` +
             b.adjustments.map(r => { const d=new Date(r.at); const when=isNaN(d)?'':d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
-              return `<div class="f12 muted mt4">• ${_esc(r.student)} · ${sign(r.hours)} · ${_esc(r.by||'')} · ${when}</div>`; }).join('') + `</div>` : ''}
+              return `<div class="f12 muted mt4" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span>• ${_esc(r.student)} · ${sign(r.hours)} · ${_esc(r.by||'')} · ${when}</span><button class="dl-btn danger" style="padding:2px 8px" onclick="deleteAdminHours('${r.id}')">✕ Delete</button></div>`; }).join('') + `</div>` : ''}
         </div>`).join('') +
       `<div class="f13 muted mb12" style="text-align:end">Total: <b>${fmtH(totalTodayH)}h</b></div>`;
   }
@@ -3691,6 +3694,34 @@ const loadAttendance = async (forceRefresh=false) => {
       if (count) count.style.display = 'none';
     } catch(e) { /* non-fatal */ }
   }
+};
+
+// Delete an admin manual adjustment (+ Add / − Remove): reverses it on the student and removes it from the counted total
+const deleteAdminHours = async (logId) => {
+  const r = (adminHoursCache||[]).find(x => x.id === logId);
+  if (!r) return notify('⚠️ Entry not found', false);
+  const sg = (r.hours>0?'+':'') + r.hours + 'h';
+  if (!confirm(`Delete this admin adjustment and reverse it?\nحذف تعديل الأدمن وعكس الساعات؟\n\n${r.student}: ${sg}`)) return;
+  try {
+    const stu = students.find(x => x.name === r.student);
+    if (stu) {
+      const fresh = await sbFetch(`students?id=eq.${stu.id}&select=hours_used`);
+      const cur = (fresh && fresh[0]) ? (parseFloat(fresh[0].hours_used)||0) : (stu.hoursUsed||0);
+      const reversed = Math.max(0, cur - r.hours); // undo: +Xh → subtract X, −Xh → add X back
+      await sbFetch(`students?id=eq.${stu.id}`, {
+        method: 'PATCH',
+        headers: { 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ hours_used: reversed })
+      });
+      students = students.map(x => x.id === stu.id ? {...x, hoursUsed: reversed} : x);
+    }
+    await sbFetch(`audit_log?id=eq.${encodeURIComponent(logId)}`, { method: 'DELETE' });
+    adminHoursCache = null; auditLogCache = null;
+    notify(stu ? '↩️ Admin hours deleted and reversed' : '⚠️ Student not found — entry removed from count only', !!stu);
+    renderAll();
+    loadAttendance(true);
+    logAction('Deleted admin hours', `${r.student}: ${sg} reversed`);
+  } catch(e) { notify('⚠️ Could not delete: ' + e.message, false); }
 };
 
 const deleteAttendance = async (aid, sid, hours) => {
