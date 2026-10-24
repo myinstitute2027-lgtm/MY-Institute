@@ -128,6 +128,13 @@ button:hover{opacity:.85}
 .modal-base{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;width:440px;max-width:93vw;max-height:90vh;overflow-y:auto}
 .overlay-base{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center}
 .overlay-base.open{display:flex}
+.tz-card{border:1px solid var(--border);background:var(--card);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.tz-card.pending{border-color:var(--gold)}
+.tz-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tz-row select,.tz-row input{font-size:12px;padding:5px 8px;width:auto;max-width:210px}
+.tz-sub{font-size:12px;color:var(--muted);line-height:1.6}
+.tz-prev{border:1px solid var(--gold);background:var(--card);border-radius:10px;padding:12px 14px;margin-top:6px}
+.tz-prev ul{margin:6px 0 0;padding-inline-start:18px;font-size:12px;line-height:1.7}
 
 /* ── Monthly report cards (teacher) ── */
 .rp-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:12px;overflow:hidden}
@@ -421,6 +428,7 @@ html[data-theme="light"] #loading-state .logo-mark{filter:none}
   <div class="page active" id="page-dashboard">
     <div class="stats-grid" id="stats-grid"></div>
     <div id="low-hours-alert"></div>
+    <div class="card mt16" id="students-country-overview"></div>
     <div class="card mt16" id="students-status-overview"></div>
     <div class="card mt16" id="teachers-overview"></div>
   </div>
@@ -593,6 +601,7 @@ html[data-theme="light"] #loading-state .logo-mark{filter:none}
           <option value="student">By Student</option>
           <option value="teacher">By Teacher</option>
         </select>
+        <button class="btn-ghost" onclick="tzOpen()">🌍 Time zones</button>
         <button class="btn-gold" onclick="openStudentScheduleModal()">+ Add Student Schedule</button>
       </div>
     </div>
@@ -814,6 +823,24 @@ html[data-theme="light"] #loading-state .logo-mark{filter:none}
 </div><!-- /content -->
 
 <!-- STUDENT SCHEDULE MODAL (add/edit full package) -->
+<!-- TIME ZONES MODAL -->
+<div id="tz-overlay" onclick="tzClose()" class="overlay-base">
+  <div onclick="event.stopPropagation()" class="modal-base" style="width:680px">
+    <div class="flex justify-between items-center mb8">
+      <div class="f15 bold gold">🌍 Time zones by country</div>
+      <button class="btn-ghost" style="font-size:12px;padding:5px 12px" onclick="tzClose()">Close</button>
+    </div>
+    <div class="tz-sub mb12">الدولة بتتحدد من كود الدولة في رقم الواتساب. جداول السيستم كلها بتوقيت القاهرة، وكل دولة بيتسجّل لها الفرق اللي الجداول مبنية عليه. لما الفرق يتغير (تغيير الساعة في أي دولة) بتدوس زر واحد وكل طلبة الدولة دي يتحركوا مع الحفاظ على وقتهم المحلي.</div>
+    <div class="tz-row mb12">
+      <span class="f12 muted">Check the gap on</span>
+      <input type="date" id="tz-asof" onchange="tzRender()"/>
+      <span id="tz-undo-slot"></span>
+    </div>
+    <div id="tz-body"></div>
+    <div id="tz-preview"></div>
+  </div>
+</div>
+
 <div id="stu-sched-overlay" onclick="closeStudentScheduleModal()" class="overlay-base">
   <div onclick="event.stopPropagation()" class="modal-base" style="width:500px">
     <div class="f15 bold gold mb4" id="stu-sched-title">📅 Student Schedule</div>
@@ -2628,6 +2655,49 @@ const saveEditStudent=async()=>{
 };
 
 // ── Render ────────────────────────────────────────────────────────────────────
+// ── Students by country (country comes from the phone number) ──────────────────
+let dashCountryBasis = 'all';
+const renderCountryStats = () => {
+  const box = document.getElementById('students-country-overview');
+  if (!box) return;
+  const isAct = s => (s.status||'active') === 'active';
+  const pool = dashCountryBasis === 'active' ? students.filter(isAct) : students;
+  const total = pool.length;
+  const hrsOf = s => s.hoursUsed||0, revOf = s => (s.hoursUsed||0)*(s.rate||STUDENT_RATE);
+  const totHrs = pool.reduce((a,s)=>a+hrsOf(s),0), totRev = pool.reduce((a,s)=>a+revOf(s),0);
+  const pct = (v,t) => t ? (Math.round(v/t*1000)/10)+'%' : '0%';
+  const groups = {};
+  pool.forEach(s => { const c = tzCountryOf(s.phone) || '?'; (groups[c] = groups[c]||[]).push(s); });
+  const codes = Object.keys(groups).sort((a,b) => (a==='?')-(b==='?') || groups[b].length-groups[a].length);
+  const egypt = (groups['20']||[]).length, unknown = (groups['?']||[]).length, abroad = total - egypt - unknown;
+  const rows = codes.map(code => {
+    const list = groups[code], info = TZ_COUNTRIES[code] || { n:'Unknown (no country code in the phone)', f:'❓' };
+    const hrs = list.reduce((a,s)=>a+hrsOf(s),0), rev = list.reduce((a,s)=>a+revOf(s),0);
+    const active = list.filter(isAct).length;
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div class="flex justify-between items-center flex-wrap gap8 mb8">
+        <div class="bold">${info.f} ${_esc(info.n)}</div>
+        <div class="flex gap8 flex-wrap">
+          <span class="badge badge-amber">${list.length} student${list.length!==1?'s':''} · ${pct(list.length,total)}</span>
+          <span class="badge badge-green">${active} active</span>
+          <span class="badge badge-blue">${hrs}h · ${pct(hrs,totHrs)} of hours</span>
+          <span class="badge badge-blue">£${rev.toFixed(0)} · ${pct(rev,totRev)} of revenue</span>
+        </div>
+      </div>
+      <div style="height:6px;border-radius:4px;background:var(--border);overflow:hidden"><div style="width:${total?list.length/total*100:0}%;height:100%;background:${code==='?'?'var(--muted)':'var(--gold)'}"></div></div>
+    </div>`;
+  }).join('');
+  box.innerHTML = `<div class="flex justify-between items-center flex-wrap gap8 mb8">
+      <div class="bold gold">🌍 Students by Country</div>
+      <select onchange="dashCountryBasis=this.value;renderCountryStats()" style="max-width:190px;font-size:12px;padding:5px 8px">
+        <option value="all"${dashCountryBasis==='all'?' selected':''}>All students</option>
+        <option value="active"${dashCountryBasis==='active'?' selected':''}>Active students only</option>
+      </select>
+    </div>
+    ${total ? `<div class="f12 muted mb8">${total} student${total!==1?'s':''} · 🇪🇬 Egypt ${egypt} (${pct(egypt,total)}) · 🌍 Abroad ${abroad} (${pct(abroad,total)})${unknown?` · ❓ Unknown ${unknown} (${pct(unknown,total)})`:''}</div>${rows}` : '<div class="muted f13">No students yet.</div>'}
+    ${unknown ? '<div class="f12 muted mt8">Students marked ❓ have no phone or no country code — add it (e.g. +44…) so they are counted in their country.</div>' : ''}`;
+};
+
 const renderDashboard=()=>{
   const totalHours=students.reduce((a,s)=>a+(s.hoursUsed||0),0);
   const totalSalary=teachers.reduce((a,t)=>{ const hrs=teacherHours(t.id); return a+hrs*teacherRate(t)+(parseFloat(t.bonus)||0); },0);
@@ -2678,6 +2748,7 @@ const renderDashboard=()=>{
   document.getElementById('students-status-overview').innerHTML=
     `<div class="bold gold mb16">📊 Students by Status</div>${statusSections||'<div class="muted f13">No students yet.</div>'}`;
 
+  renderCountryStats();
   document.getElementById('teachers-overview').innerHTML=`<div class="bold gold mb12">Teachers Overview</div>
     ${teachers.length===0?'<div class="muted f13">No teachers yet.</div>':
     [...teachers].sort((a,b)=>a.name.localeCompare(b.name)).map(t=>{
@@ -4686,6 +4757,339 @@ setInterval(() => {
   else if (isTeacherRole() && document.getElementById('page-myschedule')?.classList.contains('active')) { loadSchedReminders(); renderMySchedule(); }
 }, 30000);
 
+// ══ Time zones by country (country comes from the student's phone number) ══════
+// Every stored session time is Cairo time. For each country we remember the "gap"
+// (Cairo minus the student's local time) that the stored sessions were built for.
+// When the real gap changes (e.g. UK clocks go back) one click moves that country's
+// sessions by the difference, so the student keeps the same LOCAL time.
+const TZ_COUNTRIES = {
+  '20':{n:'Egypt',f:'🇪🇬',tz:'Africa/Cairo'},
+  '44':{n:'United Kingdom',f:'🇬🇧',tz:'Europe/London'},
+  '1':{n:'USA / Canada',f:'🇺🇸',tz:'America/New_York',l:10,multi:true},
+  '353':{n:'Ireland',f:'🇮🇪',tz:'Europe/Dublin'},
+  '49':{n:'Germany',f:'🇩🇪',tz:'Europe/Berlin'},
+  '33':{n:'France',f:'🇫🇷',tz:'Europe/Paris'},
+  '31':{n:'Netherlands',f:'🇳🇱',tz:'Europe/Amsterdam'},
+  '32':{n:'Belgium',f:'🇧🇪',tz:'Europe/Brussels'},
+  '34':{n:'Spain',f:'🇪🇸',tz:'Europe/Madrid'},
+  '39':{n:'Italy',f:'🇮🇹',tz:'Europe/Rome'},
+  '46':{n:'Sweden',f:'🇸🇪',tz:'Europe/Stockholm'},
+  '47':{n:'Norway',f:'🇳🇴',tz:'Europe/Oslo'},
+  '45':{n:'Denmark',f:'🇩🇰',tz:'Europe/Copenhagen'},
+  '41':{n:'Switzerland',f:'🇨🇭',tz:'Europe/Zurich'},
+  '43':{n:'Austria',f:'🇦🇹',tz:'Europe/Vienna'},
+  '90':{n:'Turkey',f:'🇹🇷',tz:'Europe/Istanbul'},
+  '966':{n:'Saudi Arabia',f:'🇸🇦',tz:'Asia/Riyadh'},
+  '971':{n:'UAE',f:'🇦🇪',tz:'Asia/Dubai'},
+  '965':{n:'Kuwait',f:'🇰🇼',tz:'Asia/Kuwait'},
+  '974':{n:'Qatar',f:'🇶🇦',tz:'Asia/Qatar'},
+  '973':{n:'Bahrain',f:'🇧🇭',tz:'Asia/Bahrain'},
+  '968':{n:'Oman',f:'🇴🇲',tz:'Asia/Muscat'},
+  '962':{n:'Jordan',f:'🇯🇴',tz:'Asia/Amman'},
+  '961':{n:'Lebanon',f:'🇱🇧',tz:'Asia/Beirut'},
+  '964':{n:'Iraq',f:'🇮🇶',tz:'Asia/Baghdad'},
+  '212':{n:'Morocco',f:'🇲🇦',tz:'Africa/Casablanca'},
+  '213':{n:'Algeria',f:'🇩🇿',tz:'Africa/Algiers'},
+  '216':{n:'Tunisia',f:'🇹🇳',tz:'Africa/Tunis'},
+  '218':{n:'Libya',f:'🇱🇾',tz:'Africa/Tripoli'},
+  '249':{n:'Sudan',f:'🇸🇩',tz:'Africa/Khartoum'},
+  '27':{n:'South Africa',f:'🇿🇦',tz:'Africa/Johannesburg'},
+  '61':{n:'Australia',f:'🇦🇺',tz:'Australia/Sydney',multi:true},
+  '64':{n:'New Zealand',f:'🇳🇿',tz:'Pacific/Auckland'},
+  '60':{n:'Malaysia',f:'🇲🇾',tz:'Asia/Kuala_Lumpur'},
+  '62':{n:'Indonesia',f:'🇮🇩',tz:'Asia/Jakarta'},
+  '92':{n:'Pakistan',f:'🇵🇰',tz:'Asia/Karachi'},
+  '91':{n:'India',f:'🇮🇳',tz:'Asia/Kolkata'},
+  '880':{n:'Bangladesh',f:'🇧🇩',tz:'Asia/Dhaka'}
+};
+const TZ_CHOICES = ['Europe/London','Europe/Dublin','Europe/Paris','Europe/Berlin','Europe/Istanbul',
+  'America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Toronto','America/Vancouver',
+  'Asia/Riyadh','Asia/Dubai','Asia/Kuwait','Asia/Qatar','Asia/Amman','Asia/Beirut','Asia/Baghdad',
+  'Africa/Cairo','Africa/Casablanca','Africa/Johannesburg','Asia/Karachi','Asia/Kolkata','Asia/Kuala_Lumpur',
+  'Australia/Sydney','Australia/Perth','Australia/Brisbane','Pacific/Auckland'];
+// The state of every schedule before the Oct-2026 clock changes (UK 25 Oct, Egypt 30 Oct).
+const TZ_BASELINE_MS = Date.UTC(2026,9,24,12,0,0);
+
+let tzApplied = null;      // { code: gapMinutes the stored sessions were built for }
+let tzOverrides = {};      // { code: IANA zone chosen by the admin }
+let tzLoading = false, tzFailed = false;
+let tzPending = null;      // { code, delta, newApplied }
+
+// Country code from the phone. Needs +CC / 00CC / CC… (a local number starting with a single 0 can't be placed).
+const tzCountryOf = phone => {
+  const raw = String(phone||'').trim();
+  let digits = raw.replace(/[^\d]/g,'');
+  if (!digits) return null;
+  if (!raw.startsWith('+')) {
+    if (digits.startsWith('00')) digits = digits.slice(2);
+    else if (digits.startsWith('0')) return null;
+  }
+  for (const len of [3,2,1]) {
+    const code = digits.slice(0,len), c = TZ_COUNTRIES[code], national = digits.length - len;
+    if (!c) continue;
+    if (c.l ? national !== c.l : (national < 6 || national > 12)) continue;
+    return code;
+  }
+  return null;
+};
+const tzZoneOf = code => tzOverrides[code] || (TZ_COUNTRIES[code]||{}).tz || 'UTC';
+const tzOffsetMin = (zone, ms) => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:zone,hourCycle:'h23',year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',second:'numeric'})
+    .formatToParts(new Date(ms)).map(x=>[x.type,x.value]));
+  return Math.round((Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute,+p.second) - Math.floor(ms/1000)*1000)/60000);
+};
+const tzGapAt = (code, ms) => tzOffsetMin('Africa/Cairo', ms) - tzOffsetMin(tzZoneOf(code), ms);
+const tzFmtMin = m => { const a=Math.abs(m), h=Math.floor(a/60), r=a%60; return (h?h+'h':'')+(r?(h?' ':'')+r+'m':'') || '0'; };
+const tzGapText = (code, g) => {
+  const n = (TZ_COUNTRIES[code]||{}).n || code;
+  return g===0 ? `same time as ${n}` : `Cairo is ${tzFmtMin(g)} ${g>0?'ahead of':'behind'} ${n}`;
+};
+const tzGet = async key => { const rows = await sbSelect('settings', `&key=eq.${encodeURIComponent(key)}`); return rows && rows.length ? rows[0].value : null; };
+const tzSet = (key, value) => sbFetch('settings?on_conflict=key', {
+  method:'POST', headers:{ 'Prefer':'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify([{key, value}])
+});
+const tzGroups = () => {
+  const groups = {}, unknown = [];
+  students.forEach(s => { const c = tzCountryOf(s.phone); if (!c) unknown.push(s); else (groups[c] = groups[c]||[]).push(s); });
+  return { groups, unknown };
+};
+// Make sure every country that has students has a recorded gap. The first time ever, it is the gap
+// of the baseline date (the schedules as they are today); later, a newly-seen country starts from "now".
+const tzFillApplied = async firstRun => {
+  const { groups } = tzGroups();
+  let changed = false;
+  Object.keys(groups).forEach(code => {
+    if (tzApplied[code] === undefined) { tzApplied[code] = tzGapAt(code, firstRun ? TZ_BASELINE_MS : Date.now()); changed = true; }
+  });
+  if (changed) await tzSet('mit_tz_applied', JSON.stringify(tzApplied));
+};
+const tzLoad = async () => {
+  if (tzApplied !== null || tzLoading) return;
+  tzLoading = true;
+  try {
+    const a = await tzGet('mit_tz_applied'), o = await tzGet('mit_tz_overrides');
+    tzOverrides = o ? JSON.parse(o) : {};
+    tzApplied = a ? JSON.parse(a) : {};
+    await tzFillApplied(!a);
+  } catch(e) { tzApplied = null; tzFailed = true; notify('⚠️ Could not load time-zone settings: '+e.message, false); }
+  tzLoading = false;
+};
+
+// Small badges shown next to students on the schedule views.
+const tzLocalMins = (stu, start) => {
+  if (!tzApplied || !stu) return null;
+  const code = tzCountryOf(stu.phone);
+  if (!code || code === '20' || tzApplied[code] === undefined) return null;
+  return { code, mins: (((timeToMins(start) - tzApplied[code]) % 1440) + 1440) % 1440 };
+};
+const tzFlagBadge = stu => {
+  const code = stu && tzApplied ? tzCountryOf(stu.phone) : null;
+  return code && code !== '20' ? ` <span title="${_esc(TZ_COUNTRIES[code].n)}">${TZ_COUNTRIES[code].f}</span>` : '';
+};
+const tzLocalHtml = (stu, start) => {
+  const l = tzLocalMins(stu, start);
+  return l ? `<span class="muted" style="font-size:11px;margin-inline-start:6px">${TZ_COUNTRIES[l.code].f} ${fmt12(minsToTime(l.mins))} local</span>` : '';
+};
+
+// Move a list of sessions by `delta` minutes (day name follows when it crosses midnight).
+const tzShiftDays = (days, delta) => {
+  const out = [], seen = new Set(); let rolled = 0;
+  for (const d of days) {
+    const total = timeToMins(d.start) + delta, move = Math.floor(total/1440), mins = ((total%1440)+1440)%1440;
+    const idx = DAYS.indexOf(d.day);
+    const nd = idx < 0 ? d.day : DAYS[(((idx+move)%7)+7)%7];
+    if (move !== 0) rolled++;
+    if (seen.has(nd)) return null;          // two sessions would land on the same day
+    seen.add(nd);
+    out.push({ ...d, day: nd, start: minsToTime(mins) });
+  }
+  return { days: out, rolled };
+};
+const tzPlan = (code, delta) => {
+  const changes = [], blocked = [];
+  students.filter(s => tzCountryOf(s.phone) === code).forEach(s => {
+    const pkg = schedules.find(p => p.studentId === s.id);
+    if (!pkg || !pkg.days || !pkg.days.length) return;
+    const r = tzShiftDays(pkg.days, delta);
+    if (!r) blocked.push(s.name); else changes.push({ stu:s, pkg, days:r.days, rolled:r.rolled });
+  });
+  const moved = new Map(changes.map(c => [c.pkg.studentId, c.days]));
+  const conflicts = [];
+  teachers.forEach(t => {
+    const rows = [];
+    activeSchedules().forEach(p => {
+      const st = students.find(x => x.id === p.studentId);
+      if (!st || st.teacherId !== t.id) return;
+      (moved.get(p.studentId) || p.days).forEach(d => rows.push({ st, d }));
+    });
+    DAYS.forEach(day => {
+      const ds = rows.filter(r => r.d.day === day);
+      for (let i=0;i<ds.length;i++) for (let j=i+1;j<ds.length;j++) {
+        const a = ds[i], b = ds[j];
+        if (!moved.has(a.st.id) && !moved.has(b.st.id)) continue;
+        const as = timeToMins(a.d.start), ae = as + (a.d.dur||60), bs = timeToMins(b.d.start), be = bs + (b.d.dur||60);
+        if (as < be && ae > bs) conflicts.push(`${t.name} · ${day}: ${a.st.name} ↔ ${b.st.name}`);
+      }
+    });
+  });
+  return { changes, blocked, conflicts };
+};
+
+// ── Modal ──
+const tzAsOfMs = () => {
+  const v = (document.getElementById('tz-asof')||{}).value;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v||'');
+  return m ? Date.UTC(+m[1], +m[2]-1, +m[3], 12, 0, 0) : Date.now();
+};
+const tzOpen = async () => {
+  const el = document.getElementById('tz-asof');
+  if (el && !el.value) el.value = snapshotDateKey(new Date());
+  tzPending = null;
+  document.getElementById('tz-overlay').classList.add('open');
+  document.getElementById('tz-body').innerHTML = '<div class="muted f13">Loading…</div>';
+  document.getElementById('tz-preview').innerHTML = '';
+  if (tzApplied === null) { tzFailed = false; await tzLoad(); }
+  await tzRender();
+};
+const tzClose = () => { document.getElementById('tz-overlay').classList.remove('open'); tzPending = null; };
+
+const tzRender = async () => {
+  const body = document.getElementById('tz-body');
+  if (tzApplied === null) { body.innerHTML = '<div class="card muted" style="padding:16px">Could not load the time-zone settings. Close and try again.</div>'; return; }
+  await tzFillApplied(false);
+  const asOf = tzAsOfMs();
+  const { groups, unknown } = tzGroups();
+  const codes = Object.keys(groups).filter(c => c !== '20').sort((a,b) => groups[b].length - groups[a].length);
+  const withSess = list => list.filter(s => schedules.some(p => p.studentId === s.id && (p.days||[]).length)).length;
+
+  let html = codes.map(code => {
+    const c = TZ_COUNTRIES[code], list = groups[code];
+    const applied = tzApplied[code], target = tzGapAt(code, asOf), delta = target - applied;
+    const zone = tzZoneOf(code);
+    const zoneOpts = (TZ_CHOICES.includes(zone) ? TZ_CHOICES : [zone, ...TZ_CHOICES]).map(z => `<option value="${z}"${z===zone?' selected':''}>${z}</option>`).join('');
+    const status = delta === 0
+      ? `<span class="badge" style="background:var(--green-bg);border:1px solid var(--green-border);color:var(--green)">✓ Up to date</span>`
+      : `<span class="badge" style="background:var(--red-bg);border:1px solid var(--red-border);color:var(--red)">⚠ Needs ${delta>0?'+':'−'}${tzFmtMin(delta)}</span>`;
+    return `<div class="tz-card${delta?' pending':''}">
+      <div class="flex justify-between items-center flex-wrap gap8 mb8">
+        <div class="bold f14">${c.f} ${_esc(c.n)} <span class="muted f12" style="font-weight:400">+${code} · ${list.length} student${list.length!==1?'s':''}, ${withSess(list)} with sessions</span></div>
+        ${status}
+      </div>
+      <div class="tz-sub mb8">Sessions are built for: <b>${_esc(tzGapText(code, applied))}</b><br>On the selected date: <b>${_esc(tzGapText(code, target))}</b></div>
+      <div class="tz-row mb8">
+        ${delta ? `<button class="btn-gold" style="font-size:12px;padding:6px 12px" onclick="tzPreview('${code}',${delta},${target})">Move sessions ${delta>0?'+':'−'}${tzFmtMin(delta)}…</button>
+        <button class="btn-ghost" style="font-size:12px;padding:6px 12px" onclick="tzMarkDone('${code}',${target})">Keep times, mark as done</button>` : ''}
+      </div>
+      <div class="tz-row">
+        <span class="f12 muted">Zone</span><select onchange="tzSetZone('${code}',this.value)">${zoneOpts}</select>
+        <span class="f12 muted">Manual</span><input type="number" id="tz-man-${code}" step="15" placeholder="± min" style="width:80px"/>
+        <button class="btn-ghost" style="font-size:12px;padding:5px 10px" onclick="tzPreviewManual('${code}')">Preview</button>
+      </div>
+      ${c.multi ? `<div class="tz-sub mt8">+${code} covers several time zones — pick the zone that fits these students.</div>` : ''}
+    </div>`;
+  }).join('');
+  if (!codes.length) html = '<div class="card muted" style="padding:16px;text-align:center">No students with a non-Egyptian country code yet.</div>';
+  if (groups['20']) html += `<div class="tz-sub mb8">${TZ_COUNTRIES['20'].f} Egypt: ${groups['20'].length} student${groups['20'].length!==1?'s':''} — base time, never moved.</div>`;
+  if (unknown.length) {
+    const names = unknown.slice(0,12).map(s => _esc(s.name)).join(', ') + (unknown.length>12 ? ` +${unknown.length-12} more` : '');
+    html += `<div class="tz-sub">❓ ${unknown.length} without a detectable country (no phone, or no country code) — they are never moved. Add the code to their number (e.g. +44…): ${names}</div>`;
+  }
+  body.innerHTML = html;
+
+  // undo slot
+  let undo = null;
+  try { const raw = await tzGet('mit_tz_undo'); undo = raw ? JSON.parse(raw) : null; } catch(e) {}
+  const slot = document.getElementById('tz-undo-slot');
+  slot.innerHTML = undo && undo.code ? `<button class="btn-ghost" style="font-size:12px;padding:5px 10px" onclick="tzUndo()">↩ Undo last move (${(TZ_COUNTRIES[undo.code]||{}).f||''} ${new Date(undo.at).toLocaleString('en-GB')})</button>` : '';
+  tzRenderPreview();
+};
+
+const tzPreview = (code, delta, newApplied) => { tzPending = { code, delta, newApplied }; tzRenderPreview(); const p = document.getElementById('tz-preview'); if (p) p.scrollIntoView({behavior:'smooth',block:'nearest'}); };
+const tzPreviewManual = code => {
+  const v = parseInt((document.getElementById('tz-man-'+code)||{}).value, 10);
+  if (!v) return notify('Enter the minutes to move (e.g. 60 or -60)', false);
+  tzPreview(code, v, (tzApplied[code]||0) + v);
+};
+const tzRenderPreview = () => {
+  const box = document.getElementById('tz-preview');
+  if (!box) return;
+  if (!tzPending) { box.innerHTML = ''; return; }
+  const { code, delta } = tzPending, c = TZ_COUNTRIES[code], plan = tzPlan(code, delta);
+  const sign = delta > 0 ? '+' : '−';
+  const sample = plan.changes.slice(0, 8).map(x => {
+    const d0 = x.pkg.days[0], d1 = x.days[0];
+    return `<li>${_esc(x.stu.name)}: ${d0.day} ${fmt12(d0.start)} → ${d1.day} ${fmt12(d1.start)}${x.rolled?' <span style="color:var(--gold)">(day changes)</span>':''}</li>`;
+  }).join('');
+  box.innerHTML = `<div class="tz-prev">
+    <div class="bold f14 mb4">${c.f} Move ${plan.changes.length} student schedule${plan.changes.length!==1?'s':''} by ${sign}${tzFmtMin(delta)}</div>
+    <div class="tz-sub">Every session of ${_esc(c.n)} students moves by the same amount (inactive students too). Their local time stays the same.</div>
+    ${sample ? `<ul>${sample}${plan.changes.length>8?`<li class="muted">+${plan.changes.length-8} more…</li>`:''}</ul>` : '<div class="tz-sub mt4">No schedules to move.</div>'}
+    ${plan.blocked.length ? `<div class="tz-sub mt8" style="color:var(--red)">Skipped (two sessions would land on the same day): ${plan.blocked.map(_esc).join(', ')}</div>` : ''}
+    ${plan.conflicts.length ? `<div class="tz-sub mt8" style="color:var(--red)">⚠️ ${plan.conflicts.length} teacher conflict${plan.conflicts.length!==1?'s':''} after the move:<ul>${plan.conflicts.slice(0,10).map(_esc).map(x=>`<li>${x}</li>`).join('')}</ul></div>` : '<div class="tz-sub mt8" style="color:var(--green)">No new teacher conflicts.</div>'}
+    <div class="tz-row mt12">
+      <button class="btn-gold" onclick="tzConfirm()">Confirm & move</button>
+      <button class="btn-ghost" onclick="tzPending=null;tzRenderPreview()">Cancel</button>
+    </div>
+  </div>`;
+};
+const tzConfirm = async () => {
+  if (!tzPending) return;
+  const { code, delta, newApplied } = tzPending, plan = tzPlan(code, delta);
+  const oldSchedules = schedules, c = TZ_COUNTRIES[code];
+  const undo = { at: new Date().toISOString(), code, delta, appliedBefore: tzApplied[code], before: plan.changes.map(x => ({ studentId:x.pkg.studentId, days:x.pkg.days })) };
+  try {
+    schedules = schedules.map(p => { const x = plan.changes.find(y => y.pkg.id === p.id); return x ? { ...p, days:x.days } : p; });
+    await sbUpsert('schedules', schedules, scheduleToDb);
+    tzApplied[code] = newApplied;
+    await tzSet('mit_tz_applied', JSON.stringify(tzApplied));
+    await tzSet('mit_tz_undo', JSON.stringify(undo));
+  } catch(e) {
+    schedules = oldSchedules; tzApplied[code] = undo.appliedBefore;
+    return notify('⚠️ Could not save — nothing was changed: '+e.message, false);
+  }
+  tzPending = null;
+  notify(`${c.f} ${c.n}: ${plan.changes.length} schedule(s) moved ${delta>0?'+':'−'}${tzFmtMin(delta)} ✓`);
+  logAction('Time zone shift', `${c.n} (+${code}): ${plan.changes.length} schedule(s) moved ${delta>0?'+':'-'}${delta?Math.abs(delta):0} min`);
+  renderSchedule(); await tzRender();
+};
+const tzMarkDone = async (code, target) => {
+  const c = TZ_COUNTRIES[code];
+  if (!confirm(`${c.n}: keep the current Cairo times and just record the new gap?\n(Use this if these students should keep their Cairo time.)`)) return;
+  try { tzApplied[code] = target; await tzSet('mit_tz_applied', JSON.stringify(tzApplied)); }
+  catch(e) { return notify('⚠️ Could not save: '+e.message, false); }
+  logAction('Time zone', `${c.n} (+${code}): gap recorded without moving sessions`);
+  renderSchedule(); await tzRender();
+};
+const tzSetZone = async (code, zone) => {
+  const c = TZ_COUNTRIES[code];
+  if (!confirm(`Set the time zone of ${c.n} students to ${zone}?\nTheir sessions are assumed to be correct right now.`)) return tzRender();
+  try {
+    tzOverrides[code] = zone;
+    tzApplied[code] = tzGapAt(code, Date.now());
+    await tzSet('mit_tz_overrides', JSON.stringify(tzOverrides));
+    await tzSet('mit_tz_applied', JSON.stringify(tzApplied));
+  } catch(e) { notify('⚠️ Could not save: '+e.message, false); }
+  tzPending = null; renderSchedule(); await tzRender();
+};
+const tzUndo = async () => {
+  let undo = null;
+  try { const raw = await tzGet('mit_tz_undo'); undo = raw ? JSON.parse(raw) : null; } catch(e) {}
+  if (!undo || !undo.code) return notify('Nothing to undo', false);
+  const c = TZ_COUNTRIES[undo.code] || { n:undo.code, f:'' };
+  if (!confirm(`Undo the last move (${c.n}, ${undo.delta>0?'+':'−'}${tzFmtMin(undo.delta)})?\nSchedules of those students go back exactly as they were. Edits made to them since will be lost.`)) return;
+  const oldSchedules = schedules, oldApplied = tzApplied[undo.code];
+  try {
+    const back = new Map(undo.before.map(x => [x.studentId, x.days]));
+    schedules = schedules.map(p => back.has(p.studentId) ? { ...p, days: back.get(p.studentId) } : p);
+    await sbUpsert('schedules', schedules, scheduleToDb);
+    tzApplied[undo.code] = undo.appliedBefore;
+    await tzSet('mit_tz_applied', JSON.stringify(tzApplied));
+    await tzSet('mit_tz_undo', '');
+  } catch(e) { schedules = oldSchedules; tzApplied[undo.code] = oldApplied; return notify('⚠️ Could not undo: '+e.message, false); }
+  logAction('Time zone shift', `Undo: ${c.n} (+${undo.code}) restored`);
+  notify('Undone ✓'); tzPending = null; renderSchedule(); await tzRender();
+};
+
 const renderSchedule = () => {
   const view = document.getElementById('schedule-view').value;
   document.getElementById('schedule-week-view').style.display   = view==='week'    ? '' : 'none';
@@ -4698,6 +5102,7 @@ const renderSchedule = () => {
   renderLiveBanner();
   renderSremBanner();
   if (isAdmin() && sremCache === null && !sremLoading) loadSchedReminders();
+  if (isAdmin() && tzApplied === null && !tzLoading && !tzFailed) tzLoad().then(()=>{ if (tzApplied !== null) renderSchedule(); });
 };
 
 const renderConflictBanner = () => {
@@ -4774,8 +5179,9 @@ const renderWeekGrid = () => {
         ${li?`<div style="margin-bottom:5px">${liveBadge(li)}</div>`:''}
         ${isConflict?'<div style="font-size:10px;color:var(--red);font-weight:700;margin-bottom:3px">⚠️ CONFLICT</div>':''}
         ${isZero?'<div style="font-size:10px;color:var(--red);font-weight:700;margin-bottom:3px">⛔ No hours left</div>':''}
-        <div class="chip-name">${stu?.name||'—'}</div>
+        <div class="chip-name">${stu?.name||'—'}${tzFlagBadge(stu)}</div>
         <div class="chip-time">${fmt12(d.start)} – ${fmt12(endStr)}</div>
+        ${(()=>{const l=tzLocalMins(stu,d.start);return l?`<div style="font-size:10px;opacity:.75;margin-top:1px">${TZ_COUNTRIES[l.code].f} ${fmt12(minsToTime(l.mins))} local</div>`:'';})()}
         <div style="font-size:10px;opacity:.65;margin-top:1px">${durLabel(d.dur||60)}</div>
         ${teacher?`<div style="font-size:11px;margin-top:2px;opacity:.7">👨‍🏫 ${teacher.name}</div>`:''}
         ${pkg.subject?`<div style="font-size:11px;margin-top:2px;opacity:.75">${pkg.subject}</div>`:''}
@@ -4819,7 +5225,7 @@ const renderStudentScheduleView = () => {
             ${day}${isToday?' ✨':''}
           </span>
           ${liveBadge(li)}
-          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:${tone.text}">${fmtSess(d.start,d.dur)}</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:${tone.text}">${fmtSess(d.start,d.dur)}</span>${tzLocalHtml(stu,d.start)}
           ${pkg.subject?`<span class="badge" style="background:${c.bg};border:1px solid ${c.border};color:${c.text};margin-left:4px">${pkg.subject}</span>`:''}
         </div>`;
       }).join('');
@@ -4829,7 +5235,7 @@ const renderStudentScheduleView = () => {
       html += `<div class="card teacher-schedule-card${liveAny?' live-card':''}" data-rem-sid="${stu.id}" data-rem-day="" style="border-left:3px solid ${isZero?'var(--red)':c.text}${isZero?';background:var(--red-bg)':''}">
         <div class="flex justify-between items-center mb8 flex-wrap gap8">
           <div>
-            <div class="bold f15" style="color:${isZero?'var(--red)':c.text}">${stu.name}${isZero?' ⛔':''}</div>
+            <div class="bold f15" style="color:${isZero?'var(--red)':c.text}">${stu.name}${tzFlagBadge(stu)}${isZero?' ⛔':''}</div>
             ${teacher?`<div class="f12 muted mt4">👨‍🏫 ${teacher.name}</div>`:''}
             ${isZero?`<div class="f12 mt4" style="color:var(--red);font-weight:600">No hours remaining — needs top up</div>`:''}
           </div>
