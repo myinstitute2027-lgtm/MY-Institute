@@ -581,8 +581,10 @@ html[data-theme="light"] #loading-state .logo-mark{filter:none}
           </label>
         </div>
       </div>
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--muted);margin-bottom:16px">
-        🔑 A unique promo code will be auto-generated for this student
+      <div class="form-group">
+        <label class="label">🔑 Promo Code <span class="muted" style="font-weight:400">(optional)</span></label>
+        <input id="new-student-code" class="mono" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase().replace(/\s+/g,'')" placeholder="e.g. MY-AHMED25"/>
+        <div class="f12 muted mt4">Leave empty and a unique code will be auto-generated. You can edit it later from ✏️ Edit Student.</div>
       </div>
       <div class="flex gap8">
         <button class="btn-gold flex1" onclick="addStudent()">Add Student</button>
@@ -2400,11 +2402,13 @@ const addStudent = () => {
   const currency=document.getElementById('new-student-currency').value||'GBP';
   const isTrial=document.getElementById('new-student-type-trial').checked;
   if (!name||!tid) return notify('Fill all required fields',false);
-  const code=genCode(name);
+  let code=(document.getElementById('new-student-code').value||'').trim().toUpperCase().replace(/\s+/g,'');
+  if (code && students.some(x=>(x.code||'').toUpperCase()===code)) return notify('⚠️ This promo code is already used by another student',false);
+  if (!code) { do { code=genCode(name); } while (students.some(x=>x.code===code)); }
   students.push({id:uid(),name,email,phone,teacherId:tid,code,hoursBought:isTrial?1:hours,hoursUsed:0,joinedAt:new Date().toLocaleDateString('en-GB'),isTrial,rate,currency,status:'active'});
   persist(); notify(name+' added · Code: '+code+(isTrial?' 🎯 Trial':''));
   logAction('Added student', name+(isTrial?' [Trial]':''));
-  ['new-student-name','new-student-email','new-student-phone','new-student-hours'].forEach(id=>document.getElementById(id).value='');
+  ['new-student-name','new-student-email','new-student-phone','new-student-hours','new-student-code'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('new-student-teacher').value='';
   document.getElementById('new-student-type-regular').checked=true;
   showPage('students');
@@ -2582,6 +2586,8 @@ const saveEditStudent=async()=>{
   const sid=document.getElementById('edit-student-id').value;
   const name=document.getElementById('edit-student-name').value.trim();
   if(!name) return notify('Name is required',false);
+  const newCode=(document.getElementById('edit-student-code').value||'').trim().toUpperCase().replace(/\s+/g,'');
+  if(newCode && students.some(x=>x.id!==sid && (x.code||'').toUpperCase()===newCode)) return notify('⚠️ This promo code is already used by another student',false);
 
   const oldStudent = students.find(s=>s.id===sid);
   const newTeacherId = document.getElementById('edit-student-teacher').value;
@@ -2628,7 +2634,7 @@ const saveEditStudent=async()=>{
     transferredHours: teacherChanged ? newTransferredHours : (s.transferredHours||0),
     rate:parseFloat(document.getElementById('edit-student-rate').value)||0,
     currency:document.getElementById('edit-student-currency').value||'GBP',
-    code:document.getElementById('edit-student-code').value.trim().toUpperCase()||s.code,
+    code:newCode||s.code,
     joinedAt:document.getElementById('edit-student-joined').value.trim()||s.joinedAt,
     status:document.getElementById('edit-student-status').value||'active',
   });
@@ -5594,7 +5600,9 @@ const rpReportMsg = r => { const p=r.progress||{}, g=r.grades||{};
   return [`📊 Monthly Report — ${r.month_label}`, `👤 Student: ${r.student_name}`, `👨‍🏫 Teacher: ${r.teacher_name}`, '',
     '📈 Progress', ...rpProgressLines(p), '', '📊 Grades',
     ...[...GRADE_KEYS,'exam'].map(k=>`• ${RP_GRADE_LABELS[k]}: ${g[k]||0}/10`),
-    `⭐ Average: ${rpAvg(r)}/10`, p.comment ? `\n📝 Teacher's Comment: ${p.comment}` : '', '', `💛 ${INSTITUTE_NAME} 🌟`, rcBrand().website||''].join('\n'); };
+    `⭐ Average: ${rpAvg(r)}/10`, p.comment ? `\n📝 Teacher's Comment: ${p.comment}` : '',
+    ...((c=>c?['', `🎁 ${promoMessage(r.student_name, r.id+r.student_id)}`, `🔑 Your promo code: ${c}`]:[])((students.find(x=>x.id===r.student_id)||{}).code)),
+    '', `💛 ${INSTITUTE_NAME} 🌟`, rcBrand().website||''].join('\n'); };
 const rpSetFilter = (k,v) => { RPF[k]=v; loadReports(); };
 const approveAllReports = async () => {
   const ids = reportsCache.filter(r=>r.status==='pending' && rpMonthKey(r)===currentMonthKey() && (!RPF.t||r.teacher_name===RPF.t)).map(r=>r.id);
@@ -5604,6 +5612,38 @@ const approveAllReports = async () => {
       body: JSON.stringify({status:'approved', admin_note:'', reviewed_at:new Date().toISOString()}) });
     reportsCache = null; notify(`✅ ${ids.length} reports approved`); logAction('Approved reports in bulk', ids.length+' reports'); loadReports(true);
   } catch(e) { notify('⚠️ '+e.message, false); }
+};
+
+
+// ══ Referral / promo-code closing message (monthly report) ═════════════════════
+// Rule: the friend who joins with the student's code gets 25% off the first month,
+// and the student who shared it earns a free hour per friend — no maximum.
+const PROMO_MSGS = [
+  "We love having {name} with us! If you know a friend or family member who'd enjoy learning Qur'an and Arabic, share your personal code below. They'll get 25% off their first month, and you'll earn a free hour for every friend who joins. 💛",
+  "Your progress makes us proud, {name}! Share your promo code with someone you care about. They enjoy 25% off their first month, and you receive a gift hour for each person who signs up, with no limit. 🌟",
+  "Good things grow when they're shared. 🌱 Pass your code on to a friend: they save 25% on their first month, and you collect a free hour every single time. The more friends, the more free hours!",
+  "A little invitation can change someone's journey. 🤍 Share your code with friends and family, they get 25% off their first month, and you get a free hour as our thank-you. There's no cap on how many you can earn!",
+  "{name}, you're part of the MY Institute family, and families grow together. 🌙 Send your promo code to a loved one: 25% off their first month for them, and a free hour for you, for every friend who joins.",
+  "Know someone who has been meaning to start Qur'an or Arabic lessons? 📖 Give them your code! They'll receive 25% off their first month, and you'll be rewarded with a free hour each time. Unlimited, always.",
+  "Sharing knowledge is a gift that keeps on giving. 🎁 Share your code and your friend gets 25% off their first month, while you earn a complimentary hour for every friend who joins us. No limits!",
+  "Thank you for being such a wonderful student, {name}! ✨ As a small way of saying thanks: every friend you invite with your code gets 25% off their first month, and you get a free hour, as many times as you like.",
+  "Learning is sweeter together. 🤝 Invite a friend with your personal code, they'll save 25% on their first month and you'll earn a free hour for each friend who joins. Spread the word and enjoy the rewards!",
+  "Loved this month's progress? Let someone else begin theirs! 🚀 Share your code: 25% off the first month for your friend, and a free hour for you with every successful invite. Unlimited hours, no catch."
+];
+const rcHash = str => { let h = 0; for (const ch of String(str||'')) h = (h*31 + ch.charCodeAt(0)) >>> 0; return h; };
+// Same report always gets the same wording; different students / months get different ones.
+const promoMessage = (name, seed, idx) => {
+  const i = (idx!==undefined && idx!==null) ? idx % PROMO_MSGS.length : rcHash(seed) % PROMO_MSGS.length;
+  const first = String(name||'').trim().split(/\s+/)[0] || 'dear student';
+  return PROMO_MSGS[i].replace(/\{name\}/g, first);
+};
+// Promo code lives on the student (Edit Student → Promo Code). Students can't always read the
+// students list, so fall back to a direct fetch and never fail the report card because of it.
+const rcPromoCode = async sid => {
+  const local = (typeof students!=='undefined' ? students : []).find(x=>x.id===sid);
+  if (local && local.code) return local.code;
+  try { const rows = await sbFetch(`students?id=eq.${encodeURIComponent(sid)}&select=code`); return rows && rows[0] && rows[0].code || ''; }
+  catch(e) { return ''; }
 };
 
 // ══ Report card as a shareable image (logo · seal · signature · website) ═══════
@@ -5616,7 +5656,7 @@ const rcImg = src => new Promise(res => { if (!src) return res(null); const i = 
 const rcLevel = a => a>=9?'Outstanding 🌟':a>=8?'Excellent ✨':a>=7?'Very Good 👏':a>=6?'Good 👍':a>=5?'Fair 🌱':'Needs support 💪';
 const RC_ICONS = {attendance:'🗓️',homework:'📝',interaction:'💬',behaviour:'🌟',comprehension:'🧠',participation:'🙋',exam:'🎓'};
 
-const rcRender = async (r, prev) => {
+const rcRender = async (r, prev, promoOverride, promoIdx) => {
   const B = rcBrand(), W = 1080, NAME = INSTITUTE_NAME, p = r.progress||{}, g = r.grades||{};
   const [logo, stamp, sign] = await Promise.all([rcImg(B.logo), rcImg(B.stamp), rcImg(B.sign)]);
   const cv = document.createElement('canvas'); cv.width = W; cv.height = 3200;
@@ -5700,6 +5740,32 @@ const rcRender = async (r, prev) => {
   wrap(pickEncouragement(),860,27,'700').forEach((t,i)=>{ txt(t,540,y+i*38,27,EM,'700','center'); y += i?0:0; });
   y += 96;
 
+  // referral / promo code block
+  const promo = (promoOverride!==undefined && promoOverride!==null ? promoOverride : await rcPromoCode(r.student_id)).trim().toUpperCase();
+  if (promo) {
+    const msgLines = wrap(promoMessage(r.student_name, r.id+r.student_id, promoIdx),840,25,'500');
+    const ph = 44 + 40 + 18 + msgLines.length*37 + 26 + 118 + 24 + 74 + 36;
+    c.save(); c.shadowColor='rgba(15,90,80,.28)'; c.shadowBlur=22; c.shadowOffsetY=8; rr(60,y,960,ph,28);
+    const pg = c.createLinearGradient(60,y,1020,y+ph); pg.addColorStop(0,EM); pg.addColorStop(1,EM2); c.fillStyle=pg; c.fill(); c.restore();
+    c.save(); rr(60,y,960,ph,28); c.clip(); c.fillStyle='rgba(255,255,255,.06)'; c.beginPath(); c.arc(980,y+30,110,0,7); c.fill(); c.beginPath(); c.arc(90,y+ph-10,80,0,7); c.fill(); c.restore();
+    c.save(); rr(76,y+16,928,ph-32,20); c.lineWidth=2; c.setLineDash([9,8]); c.strokeStyle='rgba(242,201,76,.65)'; c.stroke(); c.restore();
+    let py = y + 44;
+    txt('🎁  Share the love · Earn free hours',540,py+22,31,GOLD2,'800','center'); py += 40 + 26;
+    msgLines.forEach((t,i)=>txt(t,540,py+i*37,25,'#ffffff','500','center')); py += msgLines.length*37 + 12;
+    // code pill
+    c.save(); c.shadowColor='rgba(0,0,0,.18)'; c.shadowBlur=12; c.shadowOffsetY=4; rr(250,py,580,106,30); c.fillStyle='#fffaf0'; c.fill(); c.restore();
+    c.lineWidth=4; c.setLineDash([]); c.strokeStyle=GOLD2; rr(250,py,580,106,30); c.stroke();
+    txt('YOUR PERSONAL PROMO CODE',540,py+34,18,MUTED,'700','center');
+    c.font = '800 46px "JetBrains Mono","Consolas","Courier New",monospace'; c.fillStyle=EM; c.textAlign='center'; c.textBaseline='alphabetic'; c.fillText(promo,540,py+84);
+    py += 106 + 24;
+    // two benefit chips
+    const chip = (x,icon,a,b) => { rr(x,py,430,74,22); c.fillStyle='rgba(255,255,255,.14)'; c.fill();
+      txt(icon,x+22,py+48,34,'#fff','400','left'); txt(a,x+76,py+31,20,GOLD2,'700','left'); txt(b,x+76,py+58,23,'#fff','800','left'); };
+    chip(95,'🎓','YOUR FRIEND GETS','25% OFF the first month');
+    chip(555,'⏱️','YOU EARN · NO LIMIT','1 FREE HOUR per friend');
+    y += ph + 62;
+  }
+
   // signature + seal
   c.strokeStyle='rgba(212,167,44,.5)'; c.lineWidth=2; c.beginPath(); c.moveTo(80,y-20); c.lineTo(1000,y-20); c.stroke();
   if (sign) fitImg(sign,250,y+50,260,100); else txt(B.director||NAME,110,y+68,50,EM,'400','left','italic');
@@ -5741,13 +5807,20 @@ const rcOpen = async rid => {
   const all = [...(reportsCache||[]), ...(window.__stuRows||[])], r = all.find(x=>x.id===rid); if (!r) return;
   const prev = all.filter(x=>x.student_id===r.student_id && x.month_key!==r.month_key && (x.created_at||'')<(r.created_at||'')).sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''))[0];
   notify('🎨 Preparing report card…');
-  const cv = await rcRender(r, prev); window.__rcCanvas = cv;
+  const code0 = await rcPromoCode(r.student_id);
+  window.__rcCtx = { r, prev, code: code0, idx: null };
+  const cv = await rcRender(r, prev, code0, null); window.__rcCanvas = cv;
   window.__rcName = (`${r.student_name}-${r.month_label}`).replace(/[^\w\u0600-\u06FF-]+/g,'_')+'.png';
   let ov = document.getElementById('rc-overlay');
   if (!ov) { ov = document.createElement('div'); ov.id='rc-overlay'; ov.className='overlay-base'; ov.onclick = () => ov.classList.remove('open'); document.body.appendChild(ov); }
   ov.innerHTML = `<div class="modal-base" style="width:560px" onclick="event.stopPropagation()">
     <div class="f15 bold gold mb12">🖼️ Report card</div>
-    <img src="${cv.toDataURL('image/png')}" style="width:100%;border-radius:10px;border:1px solid var(--border)"/>
+    <div class="flex gap8 items-center mb12 flex-wrap" style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px">
+      <span class="f13 bold">🎁 Promo code</span>
+      <input id="rc-promo-input" class="mono flex1" style="min-width:140px;text-transform:uppercase" placeholder="MY-XXXX123 (leave empty to hide the offer)" value="${_esc(code0||'')}" oninput="this.value=this.value.toUpperCase()" onchange="rcPromoRefresh()"/>
+      <button class="btn-ghost" style="font-size:12px;padding:6px 10px" onclick="rcPromoShuffle()">🔀 Change wording</button>
+    </div>
+    <img id="rc-preview-img" src="${cv.toDataURL('image/png')}" style="width:100%;border-radius:10px;border:1px solid var(--border)"/>
     ${rcBrand().website?'':'<div class="f12 muted mt8">💡 Add your website, logo, seal and signature from <b>🎨 Brand</b> on the Reports page.</div>'}
     <div class="flex gap8 flex-wrap mt12">
       <button class="btn-gold flex1" onclick="rcCopy()">📋 Copy image</button>
@@ -5759,6 +5832,14 @@ const rcOpen = async rid => {
 };
 
 // Brand settings (saved in this browser): website, tagline, director name + logo / seal / signature images
+const rcPromoRefresh = async () => {
+  const ctx = window.__rcCtx; if (!ctx) return;
+  ctx.code = (document.getElementById('rc-promo-input').value||'').trim();
+  const cv = await rcRender(ctx.r, ctx.prev, ctx.code, ctx.idx); window.__rcCanvas = cv;
+  const im = document.getElementById('rc-preview-img'); if (im) im.src = cv.toDataURL('image/png');
+};
+const rcPromoShuffle = () => { const ctx = window.__rcCtx; if (!ctx) return;
+  ctx.idx = ((ctx.idx===null ? rcHash(ctx.r.id+ctx.r.student_id) % PROMO_MSGS.length : ctx.idx) + 1) % PROMO_MSGS.length; rcPromoRefresh(); };
 const rcShrink = f => new Promise(res => { if (!f) return res(''); const fr = new FileReader();
   fr.onload = () => { const im = new Image(); im.onload = () => { const k = Math.min(1,500/Math.max(im.width,im.height)), cc = document.createElement('canvas');
     cc.width = im.width*k; cc.height = im.height*k; cc.getContext('2d').drawImage(im,0,0,cc.width,cc.height); res(cc.toDataURL('image/png')); }; im.src = fr.result; };
