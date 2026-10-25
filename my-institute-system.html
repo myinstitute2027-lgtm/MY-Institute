@@ -2159,16 +2159,20 @@ const SESSION_PROMO_MSGS = [
   "🌟 The more we learn together, the better! Share your code with friends and family. They get 25% off month one, and you get a free hour for every friend who signs up.",
   "👨‍👩‍👧 Know a family member who wants to learn too? Send them your code: 25% off their first month, and a free hour for you each time someone joins. No limits!"
 ];
+const PROMO_SESSION_CHANCE = 0.3; // change to 0.5 for ~every other session, 1 for every session
 const pickMessageAddon = (code) => {
   const hadithAyah = [
     { items: [...HADITH_PHRASES, ...customPhrases.hadith.map(p=>p.text)] },
     { items: [...AYAH_PHRASES, ...customPhrases.ayah.map(p=>p.text)] },
   ].filter(p=>p.items.length);
   const pick = pools => { const pool = pools[Math.floor(Math.random()*pools.length)]; return pool.items[Math.floor(Math.random()*pool.items.length)]; };
-  // Student has a promo code → EVERY session message: Hadith/Ayah first, then the referral offer + code underneath
+  // Student has a promo code → Hadith/Ayah every time; the referral offer + code appears under it
+  // only on ~30% of sessions (about 1 in 3-4) so it stays a pleasant surprise, not an ad.
   if (code) {
+    const base = hadithAyah.length ? pick(hadithAyah) : '';
+    if (Math.random() >= PROMO_SESSION_CHANCE) return base;
     const promo = SESSION_PROMO_MSGS[Math.floor(Math.random()*SESSION_PROMO_MSGS.length)] + `\n🔑 Your promo code: ${String(code).toUpperCase()}`;
-    return (hadithAyah.length ? pick(hadithAyah) + '\n\n' : '') + promo;
+    return (base ? base + '\n\n' : '') + promo;
   }
   // No code → previous behaviour (random Hadith / Ayah / generic referral line)
   const pools = [...hadithAyah, { items: [...REFERRAL_PHRASES, ...customPhrases.referral.map(p=>p.text)] }].filter(p=>p.items.length);
