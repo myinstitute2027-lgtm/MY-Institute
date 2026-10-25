@@ -2148,15 +2148,31 @@ const renderPhrasesPage = () => {
 
 // Randomly picks ONE "second slot" line to follow the main encouragement — rotates between
 // a hadith, a Qur'an verse, or a friendly invite-a-friend line (built-in + any admin-added ones).
-const pickMessageAddon = () => {
-  const pools = [
+// Short referral wordings for daily session messages (used when the student has a promo code).
+// Friend who joins with the code: 25% off first month · the sharing student: 1 free hour per friend, no limit.
+const SESSION_PROMO_MSGS = [
+  "🤝 Know someone who'd love to learn Qur'an and Arabic too? Share your promo code with them: they get 25% off their first month, and you earn a free hour for every friend who joins. No limit! 🎁",
+  "🎁 Share the love! Give your promo code to a friend or family member. They enjoy 25% off their first month, and you receive a free hour as our thank-you, again and again with no cap.",
+  "🌱 Good things grow when shared. Invite a friend with your code: 25% off their first month for them, and a free hour for you with every friend who joins!",
+  "💌 Loved today's session? Let someone you care about start their own journey. Your code gives them 25% off the first month, and you earn a gift hour for each friend. Unlimited!",
+  "🤲 Sharing knowledge is a continuous charity. Pass your promo code on: your friend saves 25% on their first month and you earn a free hour per friend, with no maximum.",
+  "🌟 The more we learn together, the better! Share your code with friends and family. They get 25% off month one, and you get a free hour for every friend who signs up.",
+  "👨‍👩‍👧 Know a family member who wants to learn too? Send them your code: 25% off their first month, and a free hour for you each time someone joins. No limits!"
+];
+const pickMessageAddon = (code) => {
+  const hadithAyah = [
     { items: [...HADITH_PHRASES, ...customPhrases.hadith.map(p=>p.text)] },
     { items: [...AYAH_PHRASES, ...customPhrases.ayah.map(p=>p.text)] },
-    { items: [...REFERRAL_PHRASES, ...customPhrases.referral.map(p=>p.text)] },
   ].filter(p=>p.items.length);
-  if (!pools.length) return '';
-  const pool = pools[Math.floor(Math.random()*pools.length)];
-  return pool.items[Math.floor(Math.random()*pool.items.length)];
+  const pick = pools => { const pool = pools[Math.floor(Math.random()*pools.length)]; return pool.items[Math.floor(Math.random()*pool.items.length)]; };
+  // Student has a promo code → EVERY session message: Hadith/Ayah first, then the referral offer + code underneath
+  if (code) {
+    const promo = SESSION_PROMO_MSGS[Math.floor(Math.random()*SESSION_PROMO_MSGS.length)] + `\n🔑 Your promo code: ${String(code).toUpperCase()}`;
+    return (hadithAyah.length ? pick(hadithAyah) + '\n\n' : '') + promo;
+  }
+  // No code → previous behaviour (random Hadith / Ayah / generic referral line)
+  const pools = [...hadithAyah, { items: [...REFERRAL_PHRASES, ...customPhrases.referral.map(p=>p.text)] }].filter(p=>p.items.length);
+  return pools.length ? pick(pools) : '';
 };
 const pickEncouragement = () => {
   const pool = [...ENCOURAGING_PHRASES, ...customPhrases.encourage.map(p=>p.text)];
@@ -2190,7 +2206,7 @@ const whatsappMsg = async s => {
   const isDebt = r<0;
   const { homework, sideNote } = await getLatestHomework(s.id);
   const encouragement = pickEncouragement();
-  const addon = pickMessageAddon();
+  const addon = pickMessageAddon(s.code);
 
   let lines = [
     `🌙 Dear ${s.name},`,
@@ -3663,7 +3679,7 @@ const loadAttendance = async (forceRefresh=false) => {
       msg = [`🌙 Dear ${name},`, '', sd.absMsg, remTxt?`\n⏳ Remaining hours: ${remTxt}`:'', remaining!==null&&remaining<=0?'🔔 Please renew your hours to continue sessions.':'', '', '💛 Best regards,', `${INSTITUTE_NAME} 🌟`, site].join('\n');
     } else {
       const parts = (r.note||'').split(' | Note: ');
-      sd.homework = parts[0]; sd.sideNote = parts[1]||''; sd.enc = pickEncouragement(); sd.addon = pickMessageAddon();
+      sd.homework = parts[0]; sd.sideNote = parts[1]||''; sd.enc = pickEncouragement(); sd.addon = pickMessageAddon(stu?.code || (students.find(x=>x.id===r.student_id)||{}).code);
       msg = [`🌙 Dear ${name},`, '', `✅ Thank you for attending your session today!`,
         sd.homework?`\n📚 Homework: ${sd.homework}`:'', sd.sideNote?`💬 Note: ${sd.sideNote}`:'',
         '', sd.enc, sd.addon?`\n${sd.addon}`:'',
