@@ -5507,6 +5507,43 @@ document.addEventListener('change', e => {
   rpValidate(sid);
 });
 
+// ── Draft autosave: unsent report text survives re-renders, reloads and disconnects ──
+const RP_DIRTY = new Set();   // students whose form has unsaved typing
+const rpDraftKey = sid => `mit_rpdraft:${currentUser?.teacherId||''}:${currentMonthKey()}:${sid}`;
+const rpReadForm = sid => {
+  const card = document.getElementById('rp-card-'+sid); if (!card) return null;
+  const o = {};
+  card.querySelectorAll('[data-rp="1"]').forEach(el => { o[el.id] = el.type==='checkbox' ? el.checked : el.value; });
+  return o;
+};
+const rpSaveDraft = sid => {
+  try { const o = rpReadForm(sid); if (o) localStorage.setItem(rpDraftKey(sid), JSON.stringify(o)); } catch(e) {}
+};
+const rpClearDraft = sid => { RP_DIRTY.delete(sid); try { localStorage.removeItem(rpDraftKey(sid)); } catch(e) {} };
+const rpSnapshotDirty = () => RP_DIRTY.forEach(sid => rpSaveDraft(sid));
+const rpApplyDrafts = students => {
+  students.forEach(stu => {
+    let d = null;
+    try { d = JSON.parse(localStorage.getItem(rpDraftKey(stu.id))||'null'); } catch(e) {}
+    if (!d) return;
+    Object.entries(d).forEach(([id,v]) => {
+      const el = document.getElementById(id); if (!el) return;
+      if (el.type==='checkbox') el.checked = !!v; else el.value = v;
+    });
+    SUBJECTS.forEach(sb => document.getElementById(`rp-${stu.id}-box-${sb.id}`)?.classList.toggle('show', !!rpEl(stu.id,'subj-'+sb.id)?.checked));
+    RP_DIRTY.add(stu.id); RP_OPEN.add(stu.id);
+    const card = document.getElementById('rp-card-'+stu.id);
+    if (card) { card.classList.add('open'); const m = card.querySelector('.rp-head .muted'); if (m) m.textContent = '▲'; }
+  });
+};
+const rpOnEdit = e => {
+  const t = e.target; if (!t?.dataset?.rp) return;
+  const sid = t.closest('.rp-card')?.dataset.sid; if (!sid) return;
+  RP_DIRTY.add(sid); rpSaveDraft(sid);
+};
+document.addEventListener('input', rpOnEdit);
+document.addEventListener('change', rpOnEdit);
+
 const submitStudentReport = async sid => {
   if (!rpValidate(sid, true)) return;
   const stu = students.find(s=>s.id===sid); if (!stu) return;
@@ -5541,7 +5578,7 @@ const submitStudentReport = async sid => {
     reportsCache = null;
     notify(existing ? '✅ Report updated and sent to admin' : '✅ Report sent to admin');
     logAction(existing ? 'Edited monthly report' : 'Submitted monthly report', `${stu.name} — ${currentMonthLabel()}`);
-    RP_OPEN.delete(sid);
+    RP_OPEN.delete(sid); rpClearDraft(sid);
     rpRefreshCard(stu); rpUpdateCounter();
   } catch(e) {
     btn.disabled = false;
@@ -5568,9 +5605,12 @@ const rpUpdateCounter = () => {
     <div class="progress-bar-bg" style="width:160px"><div class="progress-bar-fill" style="width:${pct}%;background:${done===mine.length?'var(--green)':'var(--gold)'}"></div></div>`;
 };
 
+let rpRenderSeq = 0;
 const renderMyReports = async () => {
   const el = document.getElementById('myreports-list');
   if (!el || !currentUser) return;
+  const mySeq = ++rpRenderSeq;
+  rpSnapshotDirty();   // save whatever the teacher has typed before anything is rebuilt
   checkReportReminder();
   document.getElementById('myreports-month').textContent = currentMonthLabel();
   const mine = students.filter(s=>s.teacherId===currentUser.teacherId).sort((a,b)=>a.name.localeCompare(b.name));
@@ -5581,7 +5621,14 @@ const renderMyReports = async () => {
     myReportsByStudent = {};
     rows.filter(r=>r.month_key===mk).forEach(r => { if (!myReportsByStudent[r.student_id]) myReportsByStudent[r.student_id] = r; });
     myOldReports = rows.filter(r=>r.month_key!==mk);
-  } catch(e) { el.innerHTML=`<div class="card muted" style="text-align:center;padding:40px">⚠️ ${_esc(e.message)}</div>`; return; }
+  } catch(e) {
+    // Network problem: keep the form on screen (never wipe what the teacher typed) and just warn
+    if (!el.querySelector('.rp-card')) el.innerHTML=`<div class="card muted" style="text-align:center;padding:40px">⚠️ ${_esc(e.message)}<br><button class="btn-gold mt12" onclick="renderMyReports()">🔄 Retry</button></div>`;
+    else notify('⚠️ Connection problem — your text is safe, try again in a moment', false);
+    return;
+  }
+  if (mySeq !== rpRenderSeq) return;   // a newer render is already running
+  rpSnapshotDirty();
 
   // Not-yet-sent students first, then sent ones (each group alphabetical)
   const ordered = [...mine.filter(s=>!myReportsByStudent[s.id]), ...mine.filter(s=>myReportsByStudent[s.id])];
@@ -5597,6 +5644,7 @@ const renderMyReports = async () => {
       </div>`).join('') + `</div></details>`;
   }
   el.innerHTML = html;
+  rpApplyDrafts(ordered);   // put back anything that was typed but not sent yet
   rpUpdateCounter();
   ordered.forEach(s => { if (RP_OPEN.has(s.id)) rpValidate(s.id); });
 };
