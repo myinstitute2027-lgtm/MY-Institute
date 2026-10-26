@@ -5598,7 +5598,7 @@ const rpRefreshCard = stu => {
 const rpUpdateCounter = () => {
   const el = document.getElementById('myreports-counter');
   if (!el) return;
-  const mine = students.filter(s=>s.teacherId===currentUser.teacherId);
+  const mine = students.filter(s=>s.teacherId===currentUser.teacherId && isActiveStudent(s));
   const done = mine.filter(s=>myReportsByStudent[s.id]).length;
   const pct = mine.length ? Math.round(done/mine.length*100) : 0;
   el.innerHTML = `<div class="f13 bold ${done===mine.length&&mine.length?'green':''}" style="text-align:end">${done} / ${mine.length} sent</div>
@@ -5613,7 +5613,7 @@ const renderMyReports = async () => {
   rpSnapshotDirty();   // save whatever the teacher has typed before anything is rebuilt
   checkReportReminder();
   document.getElementById('myreports-month').textContent = currentMonthLabel();
-  const mine = students.filter(s=>s.teacherId===currentUser.teacherId).sort((a,b)=>a.name.localeCompare(b.name));
+  const mine = students.filter(s=>s.teacherId===currentUser.teacherId && isActiveStudent(s)).sort((a,b)=>a.name.localeCompare(b.name));
   if (!mine.length) { el.innerHTML='<div class="card muted" style="text-align:center;padding:40px">You have no students assigned yet.</div>'; rpUpdateCounter(); return; }
   try {
     const rows = await sbFetch(`monthly_reports?teacher_id=eq.${currentUser.teacherId}&order=created_at.desc&select=*`) || [];
