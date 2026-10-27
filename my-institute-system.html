@@ -5839,7 +5839,7 @@ const rpBars = g => [...GRADE_KEYS,'exam'].map(k => { const v=parseFloat(g?.[k])
   return `<div class="rm-bar"><span class="l">${RP_GRADE_LABELS[k]}</span><span class="t"><i style="width:${v*10}%;background:${rpTone(v)}"></i></span><span class="v">${v}</span></div>`; }).join('');
 const rpBarsR = r => rpIsGroup(r)
   ? rpMembers(r).map(m=>`<div class="rm-mem"><div class="rm-mem-h">👤 ${_esc(m.name)} <span class="badge badge-amber">Avg ${rpGAvg(m.grades).toFixed(1)}</span></div><div class="rm-bars">${rpBars(m.grades)}</div>${m.comment?`<div class="rm-comment">📝 ${_esc(m.comment)}</div>`:''}</div>`).join('')
-  : `${rpBarsR(r)}`;
+  : `<div class="rm-bars">${rpBars(r.grades)}</div>`;
 const rpGradeLines = r => { const ms = rpMembers(r);
   if (ms.length < 2) { const g = r.grades||{}; return ['', '📊 Grades', ...rpKeys.map(k=>`• ${RP_GRADE_LABELS[k]}: ${g[k]||0}/10`), `⭐ Average: ${rpAvg(r)}/10`]; }
   return ms.flatMap(m => ['', `👤 ${m.name} — Grades`, ...rpKeys.map(k=>`• ${RP_GRADE_LABELS[k]}: ${m.grades?.[k]||0}/10`), `⭐ Average: ${rpGAvg(m.grades).toFixed(1)}/10`, m.comment?`📝 ${m.comment}`:'']); };
