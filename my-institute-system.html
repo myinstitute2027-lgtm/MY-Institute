@@ -6240,6 +6240,14 @@ const dlCard = async id => {
 
 // ── Admin: Reports review ─────────────────────────────────────────────────────
 const loadReports = async (forceRefresh=false) => {
+  try { await _loadReportsImpl(forceRefresh); }
+  catch(e) {
+    console.error('loadReports failed:', e);
+    const el = document.getElementById('reports-content');
+    if (el) el.innerHTML = `<div class="card" style="padding:24px;color:var(--red)">⚠️ Reports failed to display: ${_esc(e && e.message || e)}</div>`;
+  }
+};
+const _loadReportsImpl = async (forceRefresh=false) => {
   const el = document.getElementById('reports-content');
   if (!el) return;
   if (!reportsCache || forceRefresh) {
