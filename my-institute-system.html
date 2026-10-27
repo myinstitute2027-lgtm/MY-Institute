@@ -152,6 +152,11 @@ button:hover{opacity:.85}
 .rp-subj{display:none;margin-bottom:8px}
 .rp-subj.show{display:block}
 @media(max-width:560px){.rp-grid,.rp-grid3{grid-template-columns:1fr 1fr}}
+.rp-mem{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px}
+.rp-mem-head{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.rp-mem-head .rp-nm{flex:1}
+.rm-mem{border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-top:10px}
+.rm-mem-h{font-weight:700;font-size:13px;display:flex;gap:8px;align-items:center;margin-top:4px}
 /* ── Daily attendance report ── */
 .dl-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:16px}
 .dl-stat{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center}
@@ -5369,8 +5374,32 @@ const rpStatusBadge = r => !r
   : '<span class="badge badge-green">✔ Sent · awaiting review</span>';
 
 const rpInput = (sid,k,val,ph,extra='') => `<input id="rp-${sid}-${k}" data-rp="1" value="${_esc(val)}" placeholder="${_esc(ph)}" ${extra}/>`;
-const rpGrade = (sid,k,val) => `<div class="form-group" style="margin:0"><label class="label">${RP_GRADE_LABELS[k]}</label>
-  <input id="rp-${sid}-g-${k}" data-rp="1" type="number" min="0" max="10" step="0.5" placeholder="0-10" value="${val===undefined||val===null?'':_esc(val)}"/></div>`;
+const rpGrade = (sid,k,val,pf='') => `<div class="form-group" style="margin:0"><label class="label">${RP_GRADE_LABELS[k]}</label>
+  <input id="rp-${sid}-${pf}g-${k}" data-rp="1" type="number" min="0" max="10" step="0.5" placeholder="0-10" value="${val===undefined||val===null?'':_esc(val)}"/></div>`;
+
+// ── Several students (e.g. siblings) in ONE report: shared progress, separate grades per student ──
+const rpMemberHTML = (sid, i, m, multi) => { const pf = i ? `x${i}-` : '';
+  return `<div class="rp-mem" data-xi="${i}">
+    <div class="rp-mem-head">
+      <input class="rp-nm" id="rp-${sid}-${pf}name" data-rp="1" value="${_esc(m.name||'')}" placeholder="Student name" style="${multi?'':'display:none'}"/>
+      <span id="rp-${sid}-${pf}avg" class="badge badge-amber">Avg —</span>
+      ${i?`<button type="button" class="hw-x" title="Remove" onclick="rpRemoveMember('${sid}',${i})">✖</button>`:''}
+    </div>
+    <div class="rp-grid3">${GRADE_KEYS.map(k=>rpGrade(sid,k,m.grades?.[k],pf)).join('')}${rpGrade(sid,'exam',m.grades?.exam,pf)}</div>
+    ${i?`<div class="form-group" style="margin:10px 0 0"><label class="label">Comment for this student (optional)</label>
+      <textarea id="rp-${sid}-${pf}comment" data-rp="1" placeholder="Optional note just for this student..." style="min-height:56px;resize:vertical">${_esc(m.comment||'')}</textarea></div>`:''}
+  </div>`; };
+const rpShowNames = sid => { const box = document.getElementById(`rp-${sid}-members`); if (!box) return;
+  const n = box.querySelectorAll('.rp-mem').length;
+  box.querySelectorAll('.rp-nm').forEach(e => e.style.display = n>1 ? '' : 'none'); };
+const rpAddMember = sid => { const box = document.getElementById(`rp-${sid}-members`); if (!box) return;
+  const idx = Math.max(0, ...[...box.querySelectorAll('.rp-mem')].map(e=>+e.dataset.xi)) + 1;
+  const tmp = document.createElement('div'); tmp.innerHTML = rpMemberHTML(sid, idx, {}, true);
+  box.appendChild(tmp.firstElementChild); rpShowNames(sid);
+  RP_DIRTY.add(sid); rpSaveDraft(sid); rpValidate(sid); };
+const rpRemoveMember = (sid, i) => { if (!confirm('Remove this student from the report?')) return;
+  document.getElementById(`rp-${sid}-x${i}-name`)?.closest('.rp-mem')?.remove(); rpShowNames(sid);
+  RP_DIRTY.add(sid); rpSaveDraft(sid); rpValidate(sid); };
 
 const rpFormHTML = (stu, r) => {
   const sid = stu.id, p = r?.progress||{}, g = r?.grades||{}, subs = r?.subjects||myOldReports.find(x=>x.student_id===sid)?.subjects||[];
@@ -5379,6 +5408,10 @@ const rpFormHTML = (stu, r) => {
   const chk = id => subs.includes(id) ? 'checked' : '';
   const show = id => subs.includes(id) ? 'show' : '';
   const sent = !!r;
+  let mem;
+  if (r && rpIsGroup(r)) mem = rpMembers(r);
+  else if (!r && last && rpIsGroup(last)) mem = rpMembers(last).map(m=>({name:m.name, grades:{}, comment:''}));
+  else mem = [{name:'', grades:g, comment:''}];
   return `
     <div class="rp-sec">Subjects *${last?' <span class="f12 muted" style="font-weight:400">↺ "From" pre-filled from last month\'s "To"</span>':''}</div>
     <div class="flex gap16 flex-wrap" style="padding:2px 0 6px">
@@ -5417,11 +5450,9 @@ const rpFormHTML = (stu, r) => {
       </div>
     </div>
 
-    <div class="rp-sec">📊 Grades (out of 10) * <span id="rp-${sid}-avg" class="badge badge-amber" style="margin-inline-start:8px">Avg —</span></div>
-    <div class="rp-grid3">
-      ${GRADE_KEYS.map(k=>rpGrade(sid,k,g[k])).join('')}
-      ${rpGrade(sid,'exam',g.exam)}
-    </div>
+    <div class="rp-sec">📊 Grades (out of 10) *</div>
+    <div id="rp-${sid}-members">${mem.map((m,i)=>rpMemberHTML(sid,i,m,mem.length>1)).join('')}</div>
+    <button type="button" class="btn-ghost" style="font-size:13px;margin-top:2px" onclick="rpAddMember('${sid}')">➕ Add another student (e.g. sibling) to this report</button>
 
     <div class="rp-sec">Teacher's Comment *</div>
     <textarea id="rp-${sid}-comment" data-rp="1" placeholder="Write your comments about the student's progress this month..." style="min-height:80px;resize:vertical">${_esc(p.comment||'')}</textarea>
@@ -5468,12 +5499,20 @@ const rpCollect = sid => {
     toSurah: need('q-to-surah'), toVerse: need('q-to-verse'), tajweed: need('q-tajweed') };
   if (subjects.includes('arabic')) progress.arabic = { from: need('ar-from'), to: need('ar-to') };
   if (subjects.includes('islamic')) progress.islamic = { from: need('is-from'), to: need('is-to') };
-  const grades = {};
-  [...GRADE_KEYS,'exam'].forEach(k => {
-    const raw = val('g-'+k), n = parseFloat(raw);
-    if (raw === '' || isNaN(n) || n < 0 || n > 10) missing.push(`rp-${sid}-g-${k}`);
-    else grades[k] = n;
+  let idxs = [...(document.getElementById(`rp-${sid}-members`)?.querySelectorAll('.rp-mem')||[])].map(e=>+e.dataset.xi);
+  if (!idxs.length) idxs = [0];
+  const multi = idxs.length > 1, members = [];
+  idxs.forEach(i => { const pf = i ? `x${i}-` : '', gr = {};
+    [...GRADE_KEYS,'exam'].forEach(k => {
+      const raw = val(pf+'g-'+k), n = parseFloat(raw);
+      if (raw === '' || isNaN(n) || n < 0 || n > 10) missing.push(`rp-${sid}-${pf}g-${k}`);
+      else gr[k] = n;
+    });
+    const nm = multi ? need(pf+'name') : '';
+    members.push({ name: nm, grades: gr, comment: i ? val(pf+'comment') : '' });
   });
+  const grades = members[0].grades;
+  if (multi) progress.members = members;
   progress.comment = need('comment');
   return { data: { subjects, progress, grades }, missing };
 };
@@ -5481,8 +5520,10 @@ const rpCollect = sid => {
 // Live validation: enables the send button only when every field is complete.
 const rpValidate = (sid, markFields=false) => {
   const { missing } = rpCollect(sid);
-  const avgEl = rpEl(sid,'avg');
-  if (avgEl) { const v=[...GRADE_KEYS,'exam'].map(k=>parseFloat(rpEl(sid,'g-'+k)?.value)).filter(n=>!isNaN(n)); avgEl.textContent = v.length ? 'Avg '+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(1)+'/10' : 'Avg —'; }
+  document.getElementById(`rp-${sid}-members`)?.querySelectorAll('.rp-mem').forEach(b => {
+    const pf = +b.dataset.xi ? `x${b.dataset.xi}-` : '', a = rpEl(sid,pf+'avg'); if (!a) return;
+    const v=[...GRADE_KEYS,'exam'].map(k=>parseFloat(rpEl(sid,pf+'g-'+k)?.value)).filter(n=>!isNaN(n));
+    a.textContent = v.length ? 'Avg '+(v.reduce((x,y)=>x+y,0)/v.length).toFixed(1)+'/10' : 'Avg —'; });
   const btn = rpEl(sid,'btn'), msg = rpEl(sid,'msg');
   if (btn) btn.disabled = missing.length > 0;
   if (msg) {
@@ -5526,6 +5567,13 @@ const rpApplyDrafts = students => {
     let d = null;
     try { d = JSON.parse(localStorage.getItem(rpDraftKey(stu.id))||'null'); } catch(e) {}
     if (!d) return;
+    const box = document.getElementById(`rp-${stu.id}-members`);
+    if (box) {
+      const want = new Set([...Object.keys(d).map(k=>{ const m=k.match(/^rp-.+?-x(\d+)-/); return m?+m[1]:0; }).filter(Boolean)]);
+      box.querySelectorAll('.rp-mem').forEach(b => { const i=+b.dataset.xi; if (i && !want.has(i)) b.remove(); });
+      want.forEach(i => { if (!box.querySelector(`.rp-mem[data-xi="${i}"]`)) { const t=document.createElement('div'); t.innerHTML=rpMemberHTML(stu.id,i,{},true); box.appendChild(t.firstElementChild); } });
+      rpShowNames(stu.id);
+    }
     Object.entries(d).forEach(([id,v]) => {
       const el = document.getElementById(id); if (!el) return;
       if (el.type==='checkbox') el.checked = !!v; else el.value = v;
@@ -5655,20 +5703,29 @@ const RPF = { t:'', s:'' };
 const rpMonthKey = r => { if (r.month_key) return r.month_key; const d=new Date(r.created_at); return isNaN(d)?'unknown':`${d.getFullYear()}-${d.getMonth()+1}`; };
 const rpMonthNum = k => { const [y,m]=String(k).split('-').map(Number); return (y||0)*100+(m||0); };
 const RP_ARCH = { all:false, months:{} };   // remembers which archive sections are open across re-renders
-const rpAvg = r => { const k=[...GRADE_KEYS,'exam']; return (k.reduce((a,x)=>a+(parseFloat(r.grades?.[x])||0),0)/k.length).toFixed(1); };
+const rpKeys = [...GRADE_KEYS,'exam'];
+const rpGAvg = g => rpKeys.reduce((a,x)=>a+(parseFloat(g?.[x])||0),0)/rpKeys.length;
+// A report normally has one student; with progress.members it holds several (siblings) with separate grades
+const rpMembers = r => { const m = r?.progress?.members; return Array.isArray(m) && m.length>1 ? m : [{ name:r?.student_name||'', grades:r?.grades||{}, comment:'' }]; };
+const rpIsGroup = r => rpMembers(r).length > 1;
+const rpAvg = r => { const ms = rpMembers(r); return (ms.reduce((a,m)=>a+rpGAvg(m.grades),0)/ms.length).toFixed(1); };
 const rpTone = n => n>=7?'var(--green)':n>=5?'var(--gold)':'var(--red)';
 const rpBold = t => _esc(t).replace(/\*([^*\n]+)\*/g,'<b>$1</b>');
 const rpBars = g => [...GRADE_KEYS,'exam'].map(k => { const v=parseFloat(g?.[k])||0;
   return `<div class="rm-bar"><span class="l">${RP_GRADE_LABELS[k]}</span><span class="t"><i style="width:${v*10}%;background:${rpTone(v)}"></i></span><span class="v">${v}</span></div>`; }).join('');
+const rpBarsR = r => rpIsGroup(r)
+  ? rpMembers(r).map(m=>`<div class="rm-mem"><div class="rm-mem-h">👤 ${_esc(m.name)} <span class="badge badge-amber">Avg ${rpGAvg(m.grades).toFixed(1)}</span></div><div class="rm-bars">${rpBars(m.grades)}</div>${m.comment?`<div class="rm-comment">📝 ${_esc(m.comment)}</div>`:''}</div>`).join('')
+  : `${rpBarsR(r)}`;
+const rpGradeLines = r => { const ms = rpMembers(r);
+  if (ms.length < 2) { const g = r.grades||{}; return ['', '📊 Grades', ...rpKeys.map(k=>`• ${RP_GRADE_LABELS[k]}: ${g[k]||0}/10`), `⭐ Average: ${rpAvg(r)}/10`]; }
+  return ms.flatMap(m => ['', `👤 ${m.name} — Grades`, ...rpKeys.map(k=>`• ${RP_GRADE_LABELS[k]}: ${m.grades?.[k]||0}/10`), `⭐ Average: ${rpGAvg(m.grades).toFixed(1)}/10`, m.comment?`📝 ${m.comment}`:'']); };
 const rpProgressLines = p => [
   p.quran ? `📖 Quran: ${p.quran.fromSurah} ${p.quran.fromVerse} → ${p.quran.toSurah} ${p.quran.toVerse}${p.quran.tajweed?' · Tajweed: '+p.quran.tajweed:''}` : '',
   p.arabic ? `🌍 Arabic: ${p.arabic.from} → ${p.arabic.to}` : '',
   p.islamic ? `☪️ Islamic Studies: ${p.islamic.from} → ${p.islamic.to}` : ''].filter(Boolean);
 const rpReportMsg = r => { const p=r.progress||{}, g=r.grades||{};
   return [`📊 Monthly Report — ${r.month_label}`, `👤 Student: ${r.student_name}`, `👨‍🏫 Teacher: ${r.teacher_name}`, '',
-    '📈 Progress', ...rpProgressLines(p), '', '📊 Grades',
-    ...[...GRADE_KEYS,'exam'].map(k=>`• ${RP_GRADE_LABELS[k]}: ${g[k]||0}/10`),
-    `⭐ Average: ${rpAvg(r)}/10`, p.comment ? `\n📝 Teacher's Comment: ${p.comment}` : '',
+    '📈 Progress', ...rpProgressLines(p), ...rpGradeLines(r), p.comment ? `\n📝 Teacher's Comment: ${p.comment}` : '',
     ...((c=>c?['', `🎁 ${promoMessage(r.student_name, r.id+r.student_id)}`, `🔑 Your promo code: ${c}`]:[])((students.find(x=>x.id===r.student_id)||{}).code)),
     '', `💛 ${INSTITUTE_NAME} 🌟`, rcBrand().website||''].join('\n'); };
 const rpSetFilter = (k,v) => { RPF[k]=v; loadReports(); };
@@ -5727,7 +5784,7 @@ const RC_ICONS = {attendance:'🗓️',homework:'📝',interaction:'💬',behavi
 const rcRender = async (r, prev, promoOverride, promoIdx) => {
   const B = rcBrand(), W = 1080, NAME = INSTITUTE_NAME, p = r.progress||{}, g = r.grades||{};
   const [logo, stamp, sign] = await Promise.all([rcImg(B.logo), rcImg(B.stamp), rcImg(B.sign)]);
-  const cv = document.createElement('canvas'); cv.width = W; cv.height = 3200;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = 3200 + Math.max(0, rpMembers(r).length-1)*520;
   const c = cv.getContext('2d');
   const EM='#0b6b5c', EM2='#12907c', GOLD='#d4a72c', GOLD2='#f2c94c', INK='#1f2a37', MUTED='#6b7280';
   const F = '"Segoe UI","Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
@@ -5785,15 +5842,21 @@ const rcRender = async (r, prev, promoOverride, promoIdx) => {
     y += 12;
   }
 
-  // grades
-  y = sec('📊 Grades', y+8) + 12; const keys = [...GRADE_KEYS,'exam'], gh = keys.length*56+30;
-  card(60,y,960,gh);
-  keys.forEach((k,i) => { const v = parseFloat(g[k])||0, ry = y+58+i*56;
-    txt(RC_ICONS[k]+'  '+RP_GRADE_LABELS[k],100,ry,26,INK,'600');
-    c.fillStyle='#eef3ef'; rr(420,ry-20,400,20,10); c.fill();
-    if (v>0) { const gr=c.createLinearGradient(420,0,820,0); gr.addColorStop(0,tone(v)); gr.addColorStop(1,tone(v)+'cc'); c.fillStyle=gr; rr(420,ry-20,Math.max(20,400*v/10),20,10); c.fill(); }
-    txt(v+' / 10',985,ry,27,tone(v),'800','right'); });
-  y += gh+40;
+  // grades (one block per student when several share the report)
+  const mems = rpMembers(r), multi = mems.length>1, keys = [...GRADE_KEYS,'exam'];
+  y = sec(multi?'📊 Grades — each student':'📊 Grades', y+8) + 12;
+  mems.forEach(m => { const mg = m.grades||{}, top = multi?64:0, mcl = multi&&m.comment ? wrap('💬 '+m.comment,860,24,'400','italic') : [],
+      gh = top+keys.length*56+30+(mcl.length?mcl.length*34+20:0);
+    card(60,y,960,gh);
+    if (multi) { txt('👤  '+(m.name||''),100,y+46,32,EM,'800'); const ma = rpGAvg(mg); c.fillStyle='#fff6d6'; rr(790,y+12,170,42,21); c.fill(); txt('Avg '+ma.toFixed(1),875,y+42,24,tone(ma),'800','center'); }
+    keys.forEach((k,i) => { const v = parseFloat(mg[k])||0, ry = y+top+58+i*56;
+      txt(RC_ICONS[k]+'  '+RP_GRADE_LABELS[k],100,ry,26,INK,'600');
+      c.fillStyle='#eef3ef'; rr(420,ry-20,400,20,10); c.fill();
+      if (v>0) { const gr=c.createLinearGradient(420,0,820,0); gr.addColorStop(0,tone(v)); gr.addColorStop(1,tone(v)+'cc'); c.fillStyle=gr; rr(420,ry-20,Math.max(20,400*v/10),20,10); c.fill(); }
+      txt(v+' / 10',985,ry,27,tone(v),'800','right'); });
+    mcl.forEach((t,i)=>txt(t,100,y+top+keys.length*56+52+i*34,24,MUTED,'400','left','italic'));
+    y += gh + (multi?24:40); });
+  if (multi) y += 16;
 
   // teacher note
   if (p.comment) {
@@ -6089,7 +6152,7 @@ const loadReports = async (forceRefresh=false) => {
       <div class="rm-body">
         ${rpProgressLines(p).map(l=>`<div class="f13">${_esc(l)}</div>`).join('')}
         ${p.comment?`<div class="rm-comment">📝 ${_esc(p.comment)}</div>`:''}
-        <div class="rm-bars">${rpBars(r.grades)}</div>
+        ${rpBarsR(r)}
         <div class="dl-bubble">${rpBold(msg)}</div>
         <textarea id="${msgId}_text" style="display:none">${_esc(msg)}</textarea>
         <div class="dl-actions">
@@ -6826,7 +6889,7 @@ const loadStudentReports = async () => {
         <div class="f12 muted mb6">📈 Progress</div>
         ${rpProgressLines(p).map(l=>`<div class="f13">${_esc(l)}</div>`).join('')}
         <div class="f12 muted" style="margin:14px 0 4px">📊 Grades (out of 10)</div>
-        <div class="rm-bars">${rpBars(r.grades)}</div>
+        ${rpBarsR(r)}
         ${p.comment?`<div class="rm-comment" style="margin-top:12px">📝 ${_esc(p.comment)}</div>`:''}
       </div>`;
     };
