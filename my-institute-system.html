@@ -181,7 +181,13 @@ button:hover{opacity:.85}
 .rm-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:10px;overflow:hidden;border-inline-start:3px solid var(--gold)}
 .rm-card.approved{border-inline-start-color:var(--green)}.rm-card.rejected{border-inline-start-color:var(--red)}
 .rm-sum{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;flex-wrap:wrap}
-.rm-who{flex:1;min-width:140px}.rm-body{padding:4px 16px 16px;border-top:1px solid var(--border)}
+.rm-who{flex:1;min-width:140px}
+.srch-box{position:relative;margin-bottom:14px}
+.srch-box input{width:100%;padding-inline-start:38px;padding-inline-end:38px}
+.srch-box .srch-ico{position:absolute;inset-inline-start:12px;top:50%;transform:translateY(-50%);pointer-events:none;opacity:.7}
+.srch-box .srch-x{position:absolute;inset-inline-end:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:4px 8px;display:none}
+.srch-empty{text-align:center;padding:26px;color:var(--muted);display:none}
+.rm-quick{padding:6px 14px!important;font-size:13px!important;white-space:nowrap}.rm-body{padding:4px 16px 16px;border-top:1px solid var(--border)}
 .rm-body>.f13{margin-top:6px}
 .rm-avg{--p:0;width:46px;height:46px;border-radius:50%;background:conic-gradient(var(--gold) calc(var(--p)*1%),var(--border) 0);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;position:relative;flex-shrink:0}
 .rm-avg::before{content:'';position:absolute;inset:4px;background:var(--surface);border-radius:50%}.rm-avg span{position:relative}
@@ -720,7 +726,13 @@ html[data-theme="light"] #loading-state .logo-mark{filter:none}
   <!-- TEACHER: MY STUDENTS (names only) -->
   <div class="page" id="page-mystudents">
     <div class="f18 bold mb16">My Students</div>
+    <div class="srch-box">
+      <span class="srch-ico">🔍</span>
+      <input id="mystudents-search" type="search" placeholder="🔎 ابحث عن طالب بالاسم... / Search student by name" autocomplete="off" oninput="stuSearch('mystudents')"/>
+      <button type="button" class="srch-x" onclick="stuSearchClear('mystudents')">✖</button>
+    </div>
     <div id="mystudents-list"></div>
+    <div id="mystudents-empty" class="srch-empty">لا يوجد طالب بهذا الاسم · No student matches</div>
   </div>
 
   <!-- TEACHER: MY SCHEDULE -->
@@ -821,7 +833,13 @@ html[data-theme="light"] #loading-state .logo-mark{filter:none}
       <div class="bold gold">📅 Time to submit monthly reports!</div>
       <div class="f12 muted mt4">It's past the 25th — please submit reports for all your students.</div>
     </div>
+    <div class="srch-box">
+      <span class="srch-ico">🔍</span>
+      <input id="myreports-search" type="search" placeholder="🔎 ابحث عن طالب بالاسم... / Search student by name" autocomplete="off" oninput="stuSearch('myreports')"/>
+      <button type="button" class="srch-x" onclick="stuSearchClear('myreports')">✖</button>
+    </div>
     <div id="myreports-list"></div>
+    <div id="myreports-empty" class="srch-empty">لا يوجد طالب بهذا الاسم · No student matches</div>
   </div>
 
   <!-- TEACHER: MY NOTIFICATIONS -->
@@ -4148,6 +4166,32 @@ const renderTrialAlert = () => {
 };
 
 // ── Teacher-only views (names only, own data only) ─────────────────────────────
+// ── Student name search (teacher: My Students + My Reports) ───────────────────
+// Matches Arabic & English, ignores diacritics and alef/ya/ta-marbuta spelling variants.
+const srchNorm = t => String(t||'').toLowerCase()
+  .replace(/[\u064B-\u0652\u0640]/g,'')
+  .replace(/[إأآٱ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه')
+  .replace(/\s+/g,' ').trim();
+const STU_SEARCH = { mystudents:{input:'mystudents-search', list:'mystudents-list', empty:'mystudents-empty', sel:'[data-name]'},
+                     myreports: {input:'myreports-search',  list:'myreports-list',  empty:'myreports-empty',  sel:'[data-name]'} };
+const stuSearch = key => {
+  const c = STU_SEARCH[key], inp = document.getElementById(c.input), list = document.getElementById(c.list);
+  if (!inp || !list) return;
+  const q = srchNorm(inp.value);
+  const x = inp.parentElement.querySelector('.srch-x'); if (x) x.style.display = q ? 'block' : 'none';
+  const items = [...list.querySelectorAll(c.sel)];
+  let shown = 0;
+  items.forEach(el => { const ok = !q || srchNorm(el.dataset.name).includes(q); el.style.display = ok ? '' : 'none'; if (ok) shown++; });
+  // "Previous months" box: hide it when searching and nothing inside matches
+  list.querySelectorAll('details.rp-old-wrap').forEach(d => {
+    const any = [...d.querySelectorAll('[data-name]')].some(e => e.style.display !== 'none');
+    d.style.display = (!q || any) ? '' : 'none'; if (q && any) d.open = true;
+  });
+  const emp = document.getElementById(c.empty);
+  if (emp) emp.style.display = (q && items.length && !shown) ? 'block' : 'none';
+};
+const stuSearchClear = key => { const i = document.getElementById(STU_SEARCH[key].input); if (i) { i.value=''; stuSearch(key); i.focus(); } };
+
 const renderMyStudents = async () => {
   const el = document.getElementById('mystudents-list');
   if (!el || !currentUser) return;
@@ -4168,7 +4212,7 @@ const renderMyStudents = async () => {
   el.innerHTML = myStudents.map(s=>{
     const doneToday = todayLogged.has(s.id);
     return `
-    <div class="card student-card mb12">
+    <div class="card student-card mb12" data-name="${_esc(s.name)}">
       <div class="flex justify-between items-center flex-wrap gap8">
         <div>
           <span class="bold f15">${s.name}</span>
@@ -4189,6 +4233,7 @@ const renderMyStudents = async () => {
       </div>
     </div>`;
   }).join('');
+  stuSearch('mystudents');   // keep the current search filter after a refresh
 };
 
 const renderMySchedule = () => {
@@ -5592,7 +5637,7 @@ const rpFormHTML = (stu, r) => {
 
 const rpCardHTML = stu => {
   const r = myReportsByStudent[stu.id];
-  return `<div class="rp-card ${r?'sent':''} ${RP_OPEN.has(stu.id)?'open':''}" id="rp-card-${stu.id}" data-sid="${stu.id}">
+  return `<div class="rp-card ${r?'sent':''} ${RP_OPEN.has(stu.id)?'open':''}" id="rp-card-${stu.id}" data-sid="${stu.id}" data-name="${_esc(stu.name)}">
     <div class="rp-head" onclick="toggleReportCard('${stu.id}')">
       <div class="flex items-center"><span class="rp-check ${r?'':'empty'}">✓</span><span class="bold f15">${_esc(stu.name)}</span></div>
       <div class="flex items-center gap8">${rpStatusBadge(r)}<span class="muted f12">${RP_OPEN.has(stu.id)?'▲':'▼'}</span></div>
@@ -5806,8 +5851,8 @@ const renderMyReports = async () => {
   const ordered = [...mine.filter(s=>!myReportsByStudent[s.id]), ...mine.filter(s=>myReportsByStudent[s.id])];
   let html = ordered.map(rpCardHTML).join('');
   if (myOldReports.length) {
-    html += `<details style="margin-top:16px"><summary class="f13 muted" style="cursor:pointer;padding:8px 0">🗂️ Previous months (${myOldReports.length})</summary><div class="mt8">` +
-      myOldReports.map(r=>`<div class="card mb8" style="padding:12px 16px">
+    html += `<details class="rp-old-wrap" style="margin-top:16px"><summary class="f13 muted" style="cursor:pointer;padding:8px 0">🗂️ Previous months (${myOldReports.length})</summary><div class="mt8">` +
+      myOldReports.map(r=>`<div class="card mb8" data-name="${_esc(r.student_name)}" style="padding:12px 16px">
         <div class="flex justify-between items-center flex-wrap gap8">
           <div><span class="bold f14">${_esc(r.student_name)}</span><span class="muted f12" style="margin-inline-start:8px">${_esc(r.month_label)}</span></div>
           ${r.status==='approved'?'<span class="badge badge-green">✅ Approved</span>':r.status==='rejected'?'<span class="badge badge-red">❌ Needs revision</span>':'<span class="badge badge-amber">⏳ Pending</span>'}
@@ -5818,6 +5863,7 @@ const renderMyReports = async () => {
   el.innerHTML = html;
   rpApplyDrafts(ordered);   // put back anything that was typed but not sent yet
   rpUpdateCounter();
+  stuSearch('myreports');   // keep the current search filter after a refresh
   ordered.forEach(s => { if (RP_OPEN.has(s.id)) rpValidate(s.id); });
 };
 
@@ -6280,6 +6326,7 @@ const _loadReportsImpl = async (forceRefresh=false) => {
       <summary class="rm-sum">
         <div class="rm-avg" style="--p:${avg*10}"><span>${avg}</span></div>
         <div class="rm-who"><div class="bold f14">${_esc(r.student_name)}</div><div class="f12 muted">${_esc(r.teacher_name)} · ${_esc(r.month_label)}</div></div>${sb}
+        ${r.status==='pending' ? `<button type="button" class="btn-gold rm-quick" title="Approve without opening the report" onclick="event.preventDefault();event.stopPropagation();this.disabled=true;reviewReport('${r.id}','approved')">✅ Approve</button>` : ''}
       </summary>
       <div class="rm-body">
         ${rpProgressLines(p).map(l=>`<div class="f13">${_esc(l)}</div>`).join('')}
