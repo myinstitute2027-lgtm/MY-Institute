@@ -933,6 +933,7 @@ html[data-theme="light"] #loading-state .logo-mark{filter:none}
         <label class="label">Default Duration</label>
         <select id="stu-sched-default-dur" onchange="applyDefaultDuration()" style="font-size:13px">
           <option value="30">30 min</option>
+          <option value="45">45 min</option>
           <option value="60" selected>60 min</option>
           <option value="90">90 min</option>
           <option value="120">120 min</option>
@@ -972,6 +973,7 @@ html[data-theme="light"] #loading-state .logo-mark{filter:none}
         <label class="label">Duration</label>
         <select id="edit-sess-dur" onchange="previewEditEnd()" style="font-size:13px">
           <option value="30">30 min</option>
+          <option value="45">45 min</option>
           <option value="60">60 min</option>
           <option value="90">90 min</option>
           <option value="120">120 min</option>
@@ -1202,6 +1204,7 @@ html[data-theme="light"] #loading-state .logo-mark{filter:none}
       <label class="label">Hours to deduct *</label>
       <select id="absence-hours">
         <option value="0.5">0.5h — 30 min</option>
+        <option value="0.75">0.75h — 45 min</option>
         <option value="1" selected>1h — 60 min</option>
         <option value="1.5">1.5h — 90 min</option>
         <option value="2">2h — 120 min</option>
@@ -1235,6 +1238,7 @@ html[data-theme="light"] #loading-state .logo-mark{filter:none}
       <label class="label">Hours *</label>
       <select id="attendance-hours">
         <option value="0.5">0.5h — 30 min</option>
+        <option value="0.75">0.75h — 45 min</option>
         <option value="1" selected>1h — 60 min</option>
         <option value="1.5">1.5h — 90 min</option>
         <option value="2">2h — 120 min</option>
@@ -1286,6 +1290,7 @@ html[data-theme="light"] #loading-state .logo-mark{filter:none}
       <label class="label">Correct Hours *</label>
       <select id="eatt-new-hours">
         <option value="0.5">0.5h — 30 min</option>
+        <option value="0.75">0.75h — 45 min</option>
         <option value="1">1h — 60 min</option>
         <option value="1.5">1.5h — 90 min</option>
         <option value="2">2h — 120 min</option>
@@ -1393,7 +1398,8 @@ const studentToDb = s => ({
   is_trial: s.isTrial||false, rate:s.rate||0, currency:s.currency||'GBP', status:s.status||'active',
   transferred_hours: s.transferredHours||0
 });
-const studentFromDb = r => ({
+const _hoursSeen = {};   // last hours_used value loaded from / written to the DB, per student id
+const studentFromDb = r => (_hoursSeen[r.id] = parseFloat(r.hours_used)||0, {
   id:r.id, name:r.name, email:r.email||'', teacherId:r.teacher_id||'', phone:r.phone||'',
   hoursBought:r.hours_bought||0, hoursUsed:r.hours_used||0, code:r.code||'', joinedAt:r.joined_at||'',
   isTrial: r.is_trial||false, rate:r.rate||0, currency:r.currency||'GBP', status:r.status||'active',
@@ -1556,7 +1562,22 @@ let students = [];
 const persist = async () => {
   try {
     await sbUpsert('teachers', teachers, teacherToDb);
-    await sbUpsert('students', students, studentToDb);
+    // Protect hours written by another session (e.g. a teacher logging attendance) since this page last
+    // loaded: a student NOT changed locally keeps the live database hours_used instead of our older copy.
+    let live = null;
+    try {
+      const rows = await sbFetch('students?select=id,hours_used');
+      live = {}; (rows||[]).forEach(r => { live[r.id] = parseFloat(r.hours_used)||0; });
+    } catch(_) { live = null; }
+    const written = {};
+    await sbUpsert('students', students, s => {
+      const row = studentToDb(s);
+      if (live && (s.id in live) && (s.id in _hoursSeen) && (s.hoursUsed||0) === _hoursSeen[s.id]) row.hours_used = live[s.id];
+      written[s.id] = row.hours_used;
+      return row;
+    });
+    students.forEach(s => { if (s.id in written) s.hoursUsed = written[s.id]; });
+    Object.assign(_hoursSeen, written);
     return true;
   } catch(e) { notify('⚠️ Could not save to database: '+e.message, false); return false; }
 };
@@ -4497,7 +4518,7 @@ const buildDaysSelector = (existingDays=[]) => {
     const startVal = ex?.start||'';
     const dur = ex?.dur || defaultDur;
     const endPreview = (checked && startVal) ? fmt12(minsToTime(timeToMins(startVal)+dur)) : '—';
-    const durOpts = [30,60,90,120,150,180].map(v=>`<option value="${v}"${v===dur?' selected':''}>${durLabel(v)}</option>`).join('');
+    const durOpts = [30,45,60,90,120,150,180].map(v=>`<option value="${v}"${v===dur?' selected':''}>${durLabel(v)}</option>`).join('');
     return `<div class="day-row" id="dayrow-${day}" style="background:var(--bg);border:1px solid ${checked?'var(--gold)':'var(--border)'};border-radius:8px;padding:8px 12px;transition:border .2s">
       <div class="flex items-center gap8 flex-wrap">
         <input type="checkbox" id="daycheck-${day}" ${checked?'checked':''} onchange="toggleDayRow('${day}')"
