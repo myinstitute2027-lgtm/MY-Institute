@@ -2295,10 +2295,16 @@ const waDirectLink = (phone, msg) => {
 
 // Fetch the most recently logged homework note for a student (used to build the WhatsApp message).
 // Returns { homework, sideNote } — both '' if nothing has been logged yet.
-const getLatestHomework = async sid => {
+const getLatestHomework = async (sid, teacherId, teacherName) => {
   try {
-    const rows = await sbFetch(`attendance_log?student_id=eq.${sid}&select=note&order=logged_at.desc&limit=10`);
-    const attendance = (rows||[]).find(r => !(r.note||'').startsWith('❌ ABSENT'));
+    const rows = await sbFetch(`attendance_log?student_id=eq.${sid}&select=note,teacher_id,teacher_name&order=logged_at.desc&limit=30`);
+    // Only use homework logged by the student's CURRENT teacher, so after a transfer the new
+    // teacher's message never picks up the previous teacher's homework.
+    const norm = x => (x||'').trim().toLowerCase();
+    const mine = r => teacherId
+      ? (r.teacher_id ? r.teacher_id === teacherId : (!!teacherName && norm(r.teacher_name) === norm(teacherName)))
+      : true;
+    const attendance = (rows||[]).find(r => !(r.note||'').startsWith('❌ ABSENT') && mine(r));
     if (!attendance) return { homework:'', sideNote:'' };
     const parts = (attendance.note||'').split(' | Note: ');
     return { homework: parts[0]||'', sideNote: parts[1]||'' };
@@ -2308,7 +2314,7 @@ const getLatestHomework = async sid => {
 const whatsappMsg = async s => {
   const r=rem(s), t=teachers.find(t=>t.id===s.teacherId);
   const isDebt = r<0;
-  const { homework, sideNote } = await getLatestHomework(s.id);
+  const { homework, sideNote } = await getLatestHomework(s.id, s.teacherId, t?.name);
   const encouragement = pickEncouragement();
   const addon = pickMessageAddon(s.code);
 
