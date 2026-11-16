@@ -367,6 +367,37 @@ html[data-theme="light"] #modal-box,html[data-theme="light"] .modal-base{border-
 html[data-theme="light"] #login-screen{background:radial-gradient(60% 55% at 50% 0%,rgba(181,142,42,.2),transparent 72%),var(--lattice),var(--bg)}
 html[data-theme="light"] #login-screen>.card{border-color:rgba(181,142,42,.35);box-shadow:0 36px 80px -40px rgba(20,30,50,.45)}
 html[data-theme="light"] #loading-state .logo-mark{filter:none}
+
+/* ── Teacher welcome (niyyah) popup ── */
+#tw-overlay{display:none;position:fixed;inset:0;z-index:10000;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.72);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+#tw-overlay.open{display:flex;animation:twFade .35s ease}
+html[data-theme="light"] #tw-overlay{background:rgba(20,30,50,.5)}
+#tw-box{direction:rtl;text-align:right;width:560px;max-width:100%;max-height:92vh;overflow-y:auto;background:radial-gradient(70% 40% at 50% 0%,rgba(201,168,76,.16),transparent 75%),var(--surface);border:1px solid rgba(201,168,76,.35);border-radius:20px;padding:30px 28px 24px;box-shadow:0 30px 80px -30px rgba(0,0,0,.9);font-family:'Noto Naskh Arabic','EB Garamond',serif;animation:twPop .5s cubic-bezier(.2,.9,.3,1.2)}
+#tw-box .tw-bism{text-align:center;color:var(--gold);font-size:20px;font-weight:700;margin-bottom:6px}
+#tw-box .tw-hello{text-align:center;font-size:24px;font-weight:700;color:var(--text);line-height:1.6}
+#tw-box .tw-sub{text-align:center;color:var(--muted);font-size:14px;margin-top:2px}
+#tw-box .tw-star{display:inline-block;animation:twSpin 6s linear infinite}
+#tw-box .tw-sec{margin-top:18px;padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:rgba(201,168,76,.05)}
+#tw-box .tw-h{font-size:15px;font-weight:700;color:var(--gold);margin-bottom:6px}
+#tw-box .tw-p{font-size:15px;line-height:2;color:var(--text)}
+#tw-box .tw-count{display:inline-block;background:linear-gradient(135deg,var(--gold),var(--gold2));color:#080c10;border-radius:20px;padding:0 12px;font-weight:700;margin:0 2px}
+#tw-box .tw-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+#tw-box .tw-chip{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:20px;padding:6px 14px;font-size:13px;font-family:inherit;font-weight:600;transition:all .2s}
+#tw-box .tw-chip.on{border-color:var(--gold);color:var(--gold);background:rgba(201,168,76,.14);box-shadow:0 0 14px -4px rgba(201,168,76,.7)}
+#tw-box .tw-dua{margin-top:10px;font-size:14px;color:var(--muted);line-height:2}
+#tw-box .tw-card{margin-top:18px;padding:18px 18px 14px;border-radius:14px;border:1px solid rgba(201,168,76,.3);background:var(--surface2,rgba(255,255,255,.03));text-align:center}
+#tw-box .tw-tag{display:inline-block;font-size:12px;font-weight:700;color:var(--gold);margin-bottom:6px}
+#tw-box .tw-text{font-size:21px;line-height:2.1;color:var(--text);font-weight:600}
+#tw-box .tw-text.q{font-size:18px}
+#tw-box .tw-src{font-size:13px;color:var(--muted);margin-top:4px}
+#tw-box .tw-another{margin-top:8px;background:transparent;color:var(--muted);font-size:12px;font-family:inherit;border:none;text-decoration:underline;padding:4px 8px}
+#tw-box .tw-go{width:100%;margin-top:18px;padding:13px 16px;font-size:16px;font-family:inherit;border-radius:12px}
+#tw-box .tw-fade{animation:twFade .4s ease}
+@keyframes twFade{from{opacity:0}to{opacity:1}}
+@keyframes twPop{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes twSpin{to{transform:rotate(360deg)}}
+@media (max-width:480px){#tw-box{padding:24px 16px 18px}#tw-box .tw-hello{font-size:21px}#tw-box .tw-text{font-size:19px}}
+@media (prefers-reduced-motion:reduce){#tw-overlay.open,#tw-box,#tw-box .tw-fade,#tw-box .tw-star{animation:none}}
 </style>
 </head>
 <body>
@@ -1454,7 +1485,122 @@ const doLogin = async () => {
   }
 };
 
+
+// ── Teacher welcome popup: role, impact, renewing the intention (niyyah) ─────────
+// Shown once per login session for teachers only. Edit/add items in TW_POOL freely.
+// Please have a qualified Sheikh review the texts and attributions before relying on them.
+const TW_POOL = [
+  // ── آيات ──
+  { t:'ayah', text:'اقْرَأْ بِاسْمِ رَبِّكَ الَّذِي خَلَقَ', src:'سورة العلق: ١' },
+  { t:'ayah', text:'وَقُل رَّبِّ زِدْنِي عِلْمًا', src:'سورة طه: ١١٤' },
+  { t:'ayah', text:'يَرْفَعِ اللَّهُ الَّذِينَ آمَنُوا مِنكُمْ وَالَّذِينَ أُوتُوا الْعِلْمَ دَرَجَاتٍ', src:'سورة المجادلة: ١١' },
+  { t:'ayah', text:'هَلْ يَسْتَوِي الَّذِينَ يَعْلَمُونَ وَالَّذِينَ لَا يَعْلَمُونَ', src:'سورة الزمر: ٩' },
+  { t:'ayah', text:'وَلَقَدْ يَسَّرْنَا الْقُرْآنَ لِلذِّكْرِ فَهَلْ مِن مُّدَّكِرٍ', src:'سورة القمر: ١٧' },
+  { t:'ayah', text:'إِنَّ هَٰذَا الْقُرْآنَ يَهْدِي لِلَّتِي هِيَ أَقْوَمُ', src:'سورة الإسراء: ٩' },
+  { t:'ayah', text:'إِنَّ الَّذِينَ يَتْلُونَ كِتَابَ اللَّهِ وَأَقَامُوا الصَّلَاةَ وَأَنفَقُوا مِمَّا رَزَقْنَاهُمْ سِرًّا وَعَلَانِيَةً يَرْجُونَ تِجَارَةً لَّن تَبُورَ', src:'سورة فاطر: ٢٩' },
+  { t:'ayah', text:'وَمَن أَحْسَنُ قَوْلًا مِّمَّن دَعَا إِلَى اللَّهِ وَعَمِلَ صَالِحًا', src:'سورة فصلت: ٣٣' },
+  { t:'ayah', text:'قُلْ إِنَّ صَلَاتِي وَنُسُكِي وَمَحْيَايَ وَمَمَاتِي لِلَّهِ رَبِّ الْعَالَمِينَ', src:'سورة الأنعام: ١٦٢' },
+  { t:'ayah', text:'وَمَا أُمِرُوا إِلَّا لِيَعْبُدُوا اللَّهَ مُخْلِصِينَ لَهُ الدِّينَ', src:'سورة البينة: ٥' },
+  { t:'ayah', text:'فَإِنَّ اللَّهَ لَا يُضِيعُ أَجْرَ الْمُحْسِنِينَ', src:'سورة يوسف: ٩٠' },
+  // ── أحاديث ──
+  { t:'hadith', text:'خَيْرُكُمْ مَنْ تَعَلَّمَ الْقُرْآنَ وَعَلَّمَهُ', src:'رواه البخاري' },
+  { t:'hadith', text:'مَنْ سَلَكَ طَرِيقًا يَلْتَمِسُ فِيهِ عِلْمًا سَهَّلَ اللَّهُ لَهُ بِهِ طَرِيقًا إِلَى الْجَنَّةِ', src:'رواه مسلم' },
+  { t:'hadith', text:'إِذَا مَاتَ ابْنُ آدَمَ انْقَطَعَ عَمَلُهُ إِلَّا مِنْ ثَلَاثٍ: صَدَقَةٍ جَارِيَةٍ، أَوْ عِلْمٍ يُنْتَفَعُ بِهِ، أَوْ وَلَدٍ صَالِحٍ يَدْعُو لَهُ', src:'رواه مسلم' },
+  { t:'hadith', text:'مَنْ دَلَّ عَلَى خَيْرٍ فَلَهُ مِثْلُ أَجْرِ فَاعِلِهِ', src:'رواه مسلم' },
+  { t:'hadith', text:'فَوَاللَّهِ لَأَنْ يَهْدِيَ اللَّهُ بِكَ رَجُلًا وَاحِدًا خَيْرٌ لَكَ مِنْ حُمْرِ النَّعَمِ', src:'متفق عليه' },
+  { t:'hadith', text:'الْمَاهِرُ بِالْقُرْآنِ مَعَ السَّفَرَةِ الْكِرَامِ الْبَرَرَةِ، وَالَّذِي يَقْرَأُ الْقُرْآنَ وَيَتَتَعْتَعُ فِيهِ وَهُوَ عَلَيْهِ شَاقٌّ لَهُ أَجْرَانِ', src:'متفق عليه' },
+  { t:'hadith', text:'مَنْ قَرَأَ حَرْفًا مِنْ كِتَابِ اللَّهِ فَلَهُ بِهِ حَسَنَةٌ، وَالْحَسَنَةُ بِعَشْرِ أَمْثَالِهَا', src:'رواه الترمذي' },
+  { t:'hadith', text:'بَلِّغُوا عَنِّي وَلَوْ آيَةً', src:'رواه البخاري' },
+  { t:'hadith', text:'مَنْ يُرِدِ اللَّهُ بِهِ خَيْرًا يُفَقِّهْهُ فِي الدِّينِ', src:'متفق عليه' },
+  { t:'hadith', text:'إِنَّ اللَّهَ وَمَلَائِكَتَهُ وَأَهْلَ السَّمَاوَاتِ وَالْأَرَضِينَ حَتَّى النَّمْلَةَ فِي جُحْرِهَا وَحَتَّى الْحُوتَ لَيُصَلُّونَ عَلَى مُعَلِّمِ النَّاسِ الْخَيْرَ', src:'رواه الترمذي' },
+  { t:'hadith', text:'يُقَالُ لِصَاحِبِ الْقُرْآنِ: اقْرَأْ وَارْتَقِ وَرَتِّلْ كَمَا كُنْتَ تُرَتِّلُ فِي الدُّنْيَا، فَإِنَّ مَنْزِلَتَكَ عِنْدَ آخِرِ آيَةٍ تَقْرَؤُهَا', src:'رواه أبو داود والترمذي' },
+  // ── مقولات وتذكيرات ──
+  { t:'quote', text:'رُبَّ عَمَلٍ صَغِيرٍ تُعَظِّمُهُ النِّيَّةُ، وَرُبَّ عَمَلٍ كَبِيرٍ تُصَغِّرُهُ النِّيَّةُ', src:'يُروى عن عبد الله بن المبارك' },
+  { t:'quote', text:'مَا عَالَجْتُ شَيْئًا أَشَدَّ عَلَيَّ مِنْ نِيَّتِي، إِنَّهَا تَتَقَلَّبُ عَلَيَّ', src:'يُروى عن سفيان الثوري' },
+  { t:'quote', text:'أنت لا تُعلِّم حروفًا فقط، أنت تبني قلبًا يحب كتاب الله.', src:'' },
+  { t:'quote', text:'كلمة طيبة منك اليوم قد تكون سبب ثبات طالب على القرآن سنين.', src:'' },
+  { t:'quote', text:'الصبر على الطالب الضعيف عبادة، وأجرك عند الله لا يضيع.', src:'' },
+  { t:'quote', text:'كل آية يقرؤها طالبك بتصحيحك لك مثل أجره بإذن الله.', src:'' },
+  { t:'quote', text:'ابتسامتك في أول الحصة تفتح قلب الطالب قبل أن تفتح المصحف.', src:'' },
+  { t:'quote', text:'ربما لا ترى ثمرة جهدك اليوم، لكن الله يراها ولا يضيعها.', src:'' },
+];
+const TW_INTENTS = ['ابتغاء وجه الله','تعليم القرآن','نفع الطالب','صدقة جارية','الإتقان والإحسان'];
+const TW_INTENTS_ADMIN = ['ابتغاء وجه الله','خدمة كتاب الله','الأمانة والإخلاص','الإعانة على الخير','الإتقان والإحسان'];
+const TW_LABEL = { ayah:'📗 آية', hadith:'📖 حديث شريف', quote:'💬 مقولة' };
+let _twLast = -1;
+
+const twPick = () => {
+  let i; do { i = Math.floor(Math.random()*TW_POOL.length); } while (TW_POOL.length>1 && i===_twLast);
+  _twLast = i; return TW_POOL[i];
+};
+const twRenderCard = () => {
+  const it = twPick(), el = document.getElementById('tw-card-body'); if (!el) return;
+  el.innerHTML = `<div class="tw-fade">
+    <span class="tw-tag">${TW_LABEL[it.t]}</span>
+    <div class="tw-text ${it.t==='quote'?'q':''}">${it.t==='ayah'?'﴿ '+_esc(it.text)+' ﴾':(it.t==='hadith'?'«'+_esc(it.text)+'»':'“'+_esc(it.text)+'”')}</div>
+    ${it.src?`<div class="tw-src">— ${_esc(it.src)}</div>`:''}
+  </div>`;
+};
+const twClose = () => {
+  const ov = document.getElementById('tw-overlay'); if (ov) ov.classList.remove('open');
+  document.removeEventListener('keydown', _twKey);
+};
+const _twKey = e => { if (e.key==='Escape') twClose(); };
+
+const showTeacherWelcome = () => {
+  if (!isTeacherRole() && !isAdmin()) return;
+  const admin = isAdmin();
+  const flag = 'mit_welcome_' + currentUser.id;
+  try { if (sessionStorage.getItem(flag)) return; sessionStorage.setItem(flag,'1'); } catch(e) {}
+
+  const h = new Date().getHours();
+  const greet = new Date().getDay()===5 ? 'جمعة مباركة' : (h<12 ? 'صباح النور' : (h<18 ? 'نهارك سعيد' : 'مساء النور'));
+  const n = (typeof students!=='undefined' && students) ? students.length : 0;
+  const nt = (typeof teachers!=='undefined' && teachers) ? teachers.length : 0;
+  const ar = x => x.toLocaleString('ar-EG');
+  const name = _esc(currentUser.displayName || '');
+  const intents = admin ? TW_INTENTS_ADMIN : TW_INTENTS;
+  const impact = admin
+    ? `${(n>0||nt>0)?`في أمانتك اليوم ${nt>0?`<span class="tw-count">${ar(nt)}</span> ${nt===1?'مدرس':'مدرسين'}`:''}${(nt>0&&n>0)?' و':''}${n>0?`<span class="tw-count">${ar(n)}</span> ${n===1?'طالب':'طلاب'}`:''} بيتعلّموا كتاب الله بإدارتك. `:''}أنت العمود الخفي وراء كل حلقة؛ بتنظيمك ومتابعتك وصبرك بتتيسّر الطريق للمدرس والطالب. وفي الحديث: «مَنْ دَلَّ عَلَى خَيْرٍ فَلَهُ مِثْلُ أَجْرِ فَاعِلِهِ»، فكل آية تُقرأ وكل طالب يتقدّم في هذا المعهد لك فيه نصيب بإذن الله. 🤍`
+    : `${n>0?`عندك اليوم <span class="tw-count">${ar(n)}</span> ${n===1?'طالب':'طلاب'} بيتعلّموا كتاب الله على إيدك. `:''}أنت من ورثة العلم، تحمل أشرف رسالة: تصل قلوب الطلاب بالقرآن. كل حرف يقرؤه طالبك صحيحًا بفضل الله ثم بفضلك، فهو في ميزان حسناتك، وكل ما سيعمله بما تعلّمه منك سيكون لك مثل أجره. أثرك يكبر ويستمر، وربما يمتد لأجيال بعدهم. 🤍`;
+
+  let ov = document.getElementById('tw-overlay');
+  if (!ov) { ov = document.createElement('div'); ov.id='tw-overlay'; document.body.appendChild(ov); }
+  ov.innerHTML = `
+  <div id="tw-box" role="dialog" aria-modal="true" aria-label="رسالة ترحيب">
+    <div class="tw-bism">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>
+    <div class="tw-hello"><span class="tw-star">✨</span> ${greet} يا ${name}</div>
+    <div class="tw-sub">نورت المعهد، وبارك الله في وقتك وجهدك 🌿</div>
+
+    <div class="tw-sec">
+      <div class="tw-h">🌟 دورك وأثرك</div>
+      <div class="tw-p">${impact}</div>
+    </div>
+
+    <div class="tw-sec">
+      <div class="tw-h">🤲 جدّد نيتك</div>
+      <div class="tw-p">«إِنَّمَا الْأَعْمَالُ بِالنِّيَّاتِ، وَإِنَّمَا لِكُلِّ امْرِئٍ مَا نَوَى» <span class="muted" style="font-size:13px">— متفق عليه</span></div>
+      <div class="tw-p" style="font-size:14px;color:var(--muted)">اختر ما تنويه اليوم، وسيبدّل الله بنيتك الطيبة عادتك إلى عبادة:</div>
+      <div class="tw-chips">${intents.map(t=>`<button type="button" class="tw-chip" onclick="this.classList.toggle('on')">${t}</button>`).join('')}</div>
+      <div class="tw-dua">${admin?'اللهم إني نويت بإدارتي اليوم وجهك الكريم، وخدمة كتابك، والإعانة على تعليمه، فاجعله خالصًا لك، وبارك لي فيه وفي مدرسينا وطلابنا.':'اللهم إني نويت بتعليمي اليوم وجهك الكريم، ونفع عبادك، وخدمة كتابك، فاجعله خالصًا لك، وبارك لي فيه وفي طلابي.'}</div>
+    </div>
+
+    <div class="tw-card">
+      <div id="tw-card-body"></div>
+      <button type="button" class="tw-another" onclick="twRenderCard()">🔄 شوف واحدة تانية</button>
+    </div>
+
+    <button type="button" class="btn-gold tw-go" onclick="twClose()">نويتُ، وأبدأ على بركة الله 🌙</button>
+  </div>`;
+  ov.onclick = e => { if (e.target===ov) twClose(); };
+  twRenderCard();
+  ov.classList.add('open');
+  document.addEventListener('keydown', _twKey);
+};
+
 const doLogout = () => {
+  try { if (currentUser) sessionStorage.removeItem('mit_welcome_'+currentUser.id); } catch(e) {}
+  twClose();
   sessionStorage.removeItem(SESSION_KEY);
   currentUser = null;
   document.getElementById('app-shell').style.display = 'none';
@@ -1505,6 +1651,7 @@ const afterLogin = async () => {
   }
   // showPage re-renders with loaded data
   showPage(isAdmin() ? 'dashboard' : 'mystudents');
+  if (isTeacherRole() || isAdmin()) showTeacherWelcome();
 };
 
 // ── Backup ────────────────────────────────────────────────────────────────────
