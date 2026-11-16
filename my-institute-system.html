@@ -398,6 +398,16 @@ html[data-theme="light"] #tw-overlay{background:rgba(20,30,50,.5)}
 @keyframes twSpin{to{transform:rotate(360deg)}}
 @media (max-width:480px){#tw-box{padding:24px 16px 18px}#tw-box .tw-hello{font-size:21px}#tw-box .tw-text{font-size:19px}}
 @media (prefers-reduced-motion:reduce){#tw-overlay.open,#tw-box,#tw-box .tw-fade,#tw-box .tw-star{animation:none}}
+
+/* ── Reminders popup (same look as welcome) ── */
+#tw-box .tw-rem{margin-top:12px;padding:14px 16px;border:1px solid var(--border);border-right:3px solid var(--gold);border-radius:12px;background:var(--surface2,rgba(255,255,255,.03))}
+#tw-box .tw-rem-h{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:8px}
+#tw-box .tw-rem-b{font-size:16px;line-height:1.9;color:var(--text);text-align:start;word-break:break-word}
+#tw-box .tw-rem-b pre{white-space:pre-wrap;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.7;direction:ltr;text-align:left;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;overflow-x:auto;margin:0}
+#tw-box .tw-rem-act{margin-top:10px}
+#tw-box .tw-done{padding:6px 16px;font-size:13px;font-family:inherit;border-radius:10px}
+#tw-box .tw-btns{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+#tw-box .tw-btns button{flex:1;min-width:140px;padding:11px 14px;font-size:14px;font-family:inherit;border-radius:12px}
 </style>
 </head>
 <body>
@@ -1541,11 +1551,121 @@ const twRenderCard = () => {
     ${it.src?`<div class="tw-src">— ${_esc(it.src)}</div>`:''}
   </div>`;
 };
-const twClose = () => {
+let _twMode = '';          // '' | 'welcome' | 'reminders'
+let _twRem = [];           // reminders waiting / currently shown: [{n, seenAt}]
+const _twShown = new Set();// reminder ids already popped up in this session
+let _twTimer = null;
+
+const twHide = () => {
   const ov = document.getElementById('tw-overlay'); if (ov) ov.classList.remove('open');
   document.removeEventListener('keydown', _twKey);
+  _twMode = '';
+};
+// Closing the welcome moves straight on to pending reminders (if any); closing reminders hides the popup.
+const twClose = () => {
+  if (_twMode==='welcome' && _twRem.length) { twRenderReminders(); return; }
+  twHide();
 };
 const _twKey = e => { if (e.key==='Escape') twClose(); };
+const twReset = () => { if (_twTimer) { clearInterval(_twTimer); _twTimer = null; } _twRem = []; _twShown.clear(); twHide(); };
+
+const TW_REM_NOTES = [
+  { t:'hadith', text:'إِنَّ اللَّهَ كَتَبَ الْإِحْسَانَ عَلَى كُلِّ شَيْءٍ', src:'رواه مسلم' },
+  { t:'hadith', text:'الدِّينُ النَّصِيحَةُ', src:'رواه مسلم' },
+  { t:'ayah',   text:'وَتَعَاوَنُوا عَلَى الْبِرِّ وَالتَّقْوَىٰ', src:'سورة المائدة: ٢' },
+];
+const twCountWord = n => n===1 ? 'تذكير واحد' : n===2 ? 'تذكيران' : (n<=10 ? n.toLocaleString('ar-EG')+' تذكيرات' : n.toLocaleString('ar-EG')+' تذكيرًا');
+
+// Pending = addressed to this teacher (or "all") and not marked Done yet
+const twLoadPending = async () => {
+  const e = encodeURIComponent(currentUser.teacherId);
+  const [rows, reads] = await Promise.all([
+    sbFetch(`notifications?or=(to_teacher_id.eq.${e},to_teacher_id.eq.all)&order=created_at.desc&select=*`),
+    sbFetch(`notification_reads?teacher_id=eq.${e}&select=*`)
+  ]);
+  const rm = {}; (reads||[]).forEach(r => { rm[r.notification_id] = r; });
+  return (rows||[]).filter(n => !n.read_at && !(rm[n.id] && rm[n.id].done_at))
+                   .map(n => ({ n, seenAt: rm[n.id] ? rm[n.id].seen_at : null }));
+};
+
+const twCheckReminders = async () => {
+  if (!isTeacherRole() || !currentUser || !currentUser.teacherId || _twMode==='reminders') return;
+  let list; try { list = await twLoadPending(); } catch(e) { return; }
+  if (!currentUser || _twMode==='reminders') return;
+  const fresh = list.filter(x => !_twShown.has(x.n.id));
+  if (!fresh.length) return;
+  fresh.forEach(x => _twShown.add(x.n.id));
+  _twRem = _twRem.concat(fresh);
+  if (_twMode==='welcome') return;   // shown right after the welcome closes
+  twRenderReminders();
+};
+const twStartReminders = () => {
+  twCheckReminders();
+  if (_twTimer) clearInterval(_twTimer);
+  _twTimer = setInterval(twCheckReminders, 60000);   // new reminders pop up within a minute
+};
+
+const twRemHtml = it => {
+  const n = it.n, d = new Date(n.created_at);
+  const when = isNaN(d) ? '' : d.toLocaleString('ar-EG',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+  const body = n.kind==='salary' ? `<pre>${_esc(n.message)}</pre>` : `<div dir="auto">${_esc(n.message).replace(/\n/g,'<br>')}</div>`;
+  return `<div class="tw-rem tw-fade" id="tw-rem-${n.id}">
+    <div class="tw-rem-h">${n.kind==='salary'?'<span class="badge badge-green">💵 راتب</span>':''}<span>من ${_esc(n.from_name||'الإدارة')}</span>${when?`<span>· ${when}</span>`:''}</div>
+    <div class="tw-rem-b">${body}</div>
+    <div class="tw-rem-act"><button type="button" class="btn-green tw-done" onclick="twDoneRem('${n.id}',this)">✅ تم</button></div>
+  </div>`;
+};
+
+function twRenderReminders() {
+  let ov = document.getElementById('tw-overlay');
+  if (!ov) { ov = document.createElement('div'); ov.id='tw-overlay'; document.body.appendChild(ov); }
+  const note = TW_REM_NOTES[Math.floor(Math.random()*TW_REM_NOTES.length)];
+  ov.innerHTML = `
+  <div id="tw-box" role="dialog" aria-modal="true" aria-label="تذكيرات من الإدارة">
+    <div class="tw-hello"><span class="tw-star">📣</span> تذكير من الإدارة</div>
+    <div class="tw-sub" id="tw-rem-count">عندك ${twCountWord(_twRem.length)} بانتظارك</div>
+    <div id="tw-rem-list">${_twRem.map(twRemHtml).join('')}</div>
+    <div class="tw-card">
+      <span class="tw-tag">${note.t==='ayah'?'📗 آية':'📖 حديث شريف'}</span>
+      <div class="tw-text" style="font-size:18px">${note.t==='ayah'?'﴿ '+note.text+' ﴾':'«'+note.text+'»'}</div>
+      <div class="tw-src">— ${note.src}</div>
+    </div>
+    <div class="tw-btns">
+      <button type="button" class="btn-gold" onclick="twHide();showPage('mynotifs')">💬 فتح صفحة التذكيرات</button>
+      <button type="button" class="btn-ghost" onclick="twHide()">لاحقًا</button>
+    </div>
+  </div>`;
+  ov.onclick = e => { if (e.target===ov) twClose(); };
+  _twMode = 'reminders';
+  ov.classList.add('open');
+  document.addEventListener('keydown', _twKey);
+
+  // record "seen" for reminders this teacher has not opened before (admin sees who viewed what)
+  const unseen = _twRem.filter(x => !x.seenAt);
+  if (unseen.length) {
+    const nowIso = new Date().toISOString(), tid = currentUser.teacherId;
+    const rows = unseen.map(x => ({ id:`${x.n.id}:${tid}`, notification_id:x.n.id, teacher_id:tid, teacher_name:currentUser.displayName, seen_at:nowIso }));
+    sbFetch('notification_reads?on_conflict=id', { method:'POST', headers:{'Prefer':'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify(rows) })
+      .then(() => unseen.forEach(x => { x.seenAt = nowIso; })).catch(()=>{});
+  }
+}
+
+const twDoneRem = async (nid, btn) => {
+  const it = _twRem.find(x => x.n.id===nid); if (!it) return;
+  if (btn) btn.disabled = true;
+  try {
+    const tid = currentUser.teacherId, nowIso = new Date().toISOString();
+    await sbFetch('notification_reads?on_conflict=id', {
+      method:'POST', headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+      body: JSON.stringify([{ id:`${nid}:${tid}`, notification_id:nid, teacher_id:tid, teacher_name:currentUser.displayName, seen_at: it.seenAt||nowIso, done_at: nowIso }])
+    });
+    _twRem = _twRem.filter(x => x.n.id!==nid);
+    notifsCache = null; refreshNotifBadge();
+    const card = document.getElementById('tw-rem-'+nid); if (card) card.remove();
+    if (!_twRem.length) { twHide(); notify('✅ تم، جزاك الله خيرًا'); }
+    else { const c = document.getElementById('tw-rem-count'); if (c) c.textContent = 'باقي ' + twCountWord(_twRem.length); }
+  } catch(e) { if (btn) btn.disabled = false; notify('⚠️ ' + e.message, false); }
+};
 
 const showTeacherWelcome = () => {
   if (!isTeacherRole() && !isAdmin()) return;
@@ -1594,13 +1714,14 @@ const showTeacherWelcome = () => {
   </div>`;
   ov.onclick = e => { if (e.target===ov) twClose(); };
   twRenderCard();
+  _twMode = 'welcome';
   ov.classList.add('open');
   document.addEventListener('keydown', _twKey);
 };
 
 const doLogout = () => {
   try { if (currentUser) sessionStorage.removeItem('mit_welcome_'+currentUser.id); } catch(e) {}
-  twClose();
+  twReset();
   sessionStorage.removeItem(SESSION_KEY);
   currentUser = null;
   document.getElementById('app-shell').style.display = 'none';
@@ -1652,6 +1773,7 @@ const afterLogin = async () => {
   // showPage re-renders with loaded data
   showPage(isAdmin() ? 'dashboard' : 'mystudents');
   if (isTeacherRole() || isAdmin()) showTeacherWelcome();
+  if (isTeacherRole()) twStartReminders();
 };
 
 // ── Backup ────────────────────────────────────────────────────────────────────
