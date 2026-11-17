@@ -1667,28 +1667,37 @@ const twDoneRem = async (nid, btn) => {
   } catch(e) { if (btn) btn.disabled = false; notify('⚠️ ' + e.message, false); }
 };
 
-const showTeacherWelcome = () => {
+const showTeacherWelcome = async () => {
   if (!isTeacherRole() && !isAdmin()) return;
   const admin = isAdmin();
   // Show at most twice a day per user: once in the morning slot, once in the evening slot.
-  // Slots split at TW_EVENING_FROM (24h clock, local time). Persisted in localStorage so
-  // re-login / closing the tab / refreshing does not bring it back within the same slot.
+  // Slots split at TW_EVENING_FROM (24h clock, local time). The "seen" mark lives in Supabase
+  // (settings table, key welcome:<userId>, value "YYYY-MM-DD|am,pm") so it holds across browsers,
+  // devices, private tabs and in-app browsers. localStorage is only a fast local copy of the same mark.
   const TW_EVENING_FROM = 16;
   const _now = new Date();
   const _pad = x => String(x).padStart(2,'0');
   const _day = _now.getFullYear()+'-'+_pad(_now.getMonth()+1)+'-'+_pad(_now.getDate());
   const _slot = _now.getHours() < TW_EVENING_FROM ? 'am' : 'pm';
-  const _prefix = 'mit_welcome_' + currentUser.id + ':';
-  const flag = _prefix + _day + ':' + _slot;
+  const uid = currentUser.id;
+  const lsPrefix = 'mit_welcome_' + uid + ':';
+  const lsKey = lsPrefix + _day + ':' + _slot;
+  const dbKey = 'welcome:' + uid;
+  try { if (localStorage.getItem(lsKey)) return; } catch(e) {}
+  let seen = [];
   try {
-    if (localStorage.getItem(flag)) return;
-    // drop flags from previous days so storage doesn't pile up
-    Object.keys(localStorage).forEach(k => { if (k.indexOf(_prefix)===0 && k.indexOf(_prefix+_day)!==0) localStorage.removeItem(k); });
-    localStorage.setItem(flag,'1');
-  } catch(e) {
-    // localStorage unavailable: fall back to once per browser session
-    try { if (sessionStorage.getItem(flag)) return; sessionStorage.setItem(flag,'1'); } catch(e2) {}
-  }
+    const raw = await getSetting(dbKey);
+    if (raw && raw.indexOf(_day+'|')===0) seen = raw.slice(_day.length+1).split(',').filter(Boolean);
+  } catch(e) {}
+  if (!currentUser || currentUser.id!==uid) return;          // logged out while checking
+  try {
+    Object.keys(localStorage).forEach(k => { if (k.indexOf(lsPrefix)===0 && k!==lsKey) localStorage.removeItem(k); });
+    localStorage.setItem(lsKey,'1');
+  } catch(e) {}
+  if (seen.indexOf(_slot)!==-1) return;                      // already shown in this slot
+  seen.push(_slot);
+  await setSetting(dbKey, _day+'|'+seen.join(','));
+  if (!currentUser || currentUser.id!==uid) return;
 
   const h = new Date().getHours();
   const greet = new Date().getDay()===5 ? 'جمعة مباركة' : (h<12 ? 'صباح النور' : (h<18 ? 'نهارك سعيد' : 'مساء النور'));
@@ -1788,7 +1797,8 @@ const afterLogin = async () => {
   }
   // showPage re-renders with loaded data
   showPage(isAdmin() ? 'dashboard' : 'mystudents');
-  if (isTeacherRole() || isAdmin()) showTeacherWelcome();
+  // Wait for the welcome check so the reminders popup can't race it for the same overlay
+  if (isTeacherRole() || isAdmin()) { try { await showTeacherWelcome(); } catch(e) {} }
   if (isTeacherRole()) twStartReminders();
 };
 
