@@ -1497,7 +1497,7 @@ const doLogin = async () => {
 
 
 // ── Teacher welcome popup: role, impact, renewing the intention (niyyah) ─────────
-// Shown once per login session for teachers only. Edit/add items in TW_POOL freely.
+// Shown at most twice a day (morning + evening) per user. Edit/add items in TW_POOL freely.
 // Please have a qualified Sheikh review the texts and attributions before relying on them.
 const TW_POOL = [
   // ── آيات ──
@@ -1670,8 +1670,25 @@ const twDoneRem = async (nid, btn) => {
 const showTeacherWelcome = () => {
   if (!isTeacherRole() && !isAdmin()) return;
   const admin = isAdmin();
-  const flag = 'mit_welcome_' + currentUser.id;
-  try { if (sessionStorage.getItem(flag)) return; sessionStorage.setItem(flag,'1'); } catch(e) {}
+  // Show at most twice a day per user: once in the morning slot, once in the evening slot.
+  // Slots split at TW_EVENING_FROM (24h clock, local time). Persisted in localStorage so
+  // re-login / closing the tab / refreshing does not bring it back within the same slot.
+  const TW_EVENING_FROM = 16;
+  const _now = new Date();
+  const _pad = x => String(x).padStart(2,'0');
+  const _day = _now.getFullYear()+'-'+_pad(_now.getMonth()+1)+'-'+_pad(_now.getDate());
+  const _slot = _now.getHours() < TW_EVENING_FROM ? 'am' : 'pm';
+  const _prefix = 'mit_welcome_' + currentUser.id + ':';
+  const flag = _prefix + _day + ':' + _slot;
+  try {
+    if (localStorage.getItem(flag)) return;
+    // drop flags from previous days so storage doesn't pile up
+    Object.keys(localStorage).forEach(k => { if (k.indexOf(_prefix)===0 && k.indexOf(_prefix+_day)!==0) localStorage.removeItem(k); });
+    localStorage.setItem(flag,'1');
+  } catch(e) {
+    // localStorage unavailable: fall back to once per browser session
+    try { if (sessionStorage.getItem(flag)) return; sessionStorage.setItem(flag,'1'); } catch(e2) {}
+  }
 
   const h = new Date().getHours();
   const greet = new Date().getDay()===5 ? 'جمعة مباركة' : (h<12 ? 'صباح النور' : (h<18 ? 'نهارك سعيد' : 'مساء النور'));
@@ -1720,7 +1737,6 @@ const showTeacherWelcome = () => {
 };
 
 const doLogout = () => {
-  try { if (currentUser) sessionStorage.removeItem('mit_welcome_'+currentUser.id); } catch(e) {}
   twReset();
   sessionStorage.removeItem(SESSION_KEY);
   currentUser = null;
