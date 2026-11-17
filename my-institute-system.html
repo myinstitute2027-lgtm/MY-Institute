@@ -1828,7 +1828,9 @@ const logAction = async (action, details='') => {
 let teachers = [];
 let students = [];
 
+let _persistBusy = 0;
 const persist = async () => {
+  _persistBusy++;
   try {
     await sbUpsert('teachers', teachers, teacherToDb);
     // Protect hours written by another session (e.g. a teacher logging attendance) since this page last
@@ -1849,12 +1851,14 @@ const persist = async () => {
     Object.assign(_hoursSeen, written);
     return true;
   } catch(e) { notify('⚠️ Could not save to database: '+e.message, false); return false; }
+  finally { _persistBusy--; }
 };
 
 // Refetch just teachers+students from Supabase (role-aware) and refresh in-memory state.
 // Used to keep Salary / Students / Dashboard numbers accurate even if another
 // admin/teacher session updated the data since this page was loaded.
 const refreshCoreData = async () => {
+  if (_persistBusy > 0) return; // a save is in progress — don't overwrite unsaved local changes
   try {
     if (isAdmin()) {
       const [teacherRows, studentRows] = await Promise.all([ sbSelect('teachers'), sbSelect('students') ]);
@@ -2765,12 +2769,14 @@ const doCopy = (textareaId, btnId) => {
 };
 
 // ── Actions ───────────────────────────────────────────────────────────────────
-const addTeacher = () => {
+const addTeacher = async () => {
   const name=document.getElementById('new-teacher-name').value.trim();
   const email=document.getElementById('new-teacher-email').value.trim();
   if (!name) return notify('Enter teacher name',false);
   teachers.push({id:uid(),name,email,joinedAt:new Date().toLocaleDateString('en-GB'),rate:DEFAULT_TEACHER_RATE,hoursOverride:null,bonus:0,bonusNote:''});
-  persist(); notify(name+' added ✓');
+  const _okT = await persist();
+  if (!_okT) return;
+  notify(name+' added ✓');
   logAction('Added teacher', name);
   document.getElementById('new-teacher-name').value='';
   document.getElementById('new-teacher-email').value='';
@@ -2787,7 +2793,7 @@ const deleteTeacher = tid => {
   logAction('Removed teacher', t?.name||tid);
 };
 
-const addStudent = () => {
+const addStudent = async () => {
   const name=document.getElementById('new-student-name').value.trim();
   const email=document.getElementById('new-student-email').value.trim();
   const phone=document.getElementById('new-student-phone').value.trim();
@@ -2801,7 +2807,9 @@ const addStudent = () => {
   if (code && students.some(x=>(x.code||'').toUpperCase()===code)) return notify('⚠️ This promo code is already used by another student',false);
   if (!code) { do { code=genCode(name); } while (students.some(x=>x.code===code)); }
   students.push({id:uid(),name,email,phone,teacherId:tid,code,hoursBought:isTrial?1:hours,hoursUsed:0,joinedAt:new Date().toLocaleDateString('en-GB'),isTrial,rate,currency,status:'active'});
-  persist(); notify(name+' added · Code: '+code+(isTrial?' 🎯 Trial':''));
+  const _ok = await persist();
+  if (!_ok) { students = students.filter(x=>x.code!==code); renderAll(); return; }
+  notify(name+' added · Code: '+code+(isTrial?' 🎯 Trial':''));
   logAction('Added student', name+(isTrial?' [Trial]':''));
   ['new-student-name','new-student-email','new-student-phone','new-student-hours','new-student-code'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('new-student-teacher').value='';
@@ -2812,7 +2820,7 @@ const addStudent = () => {
 // ── Volunteers (طلبة التطوع) ──────────────────────────────────────────────────
 // Volunteers are students with status 'volunteer': they study for free, are NOT counted as
 // "active" students, generate no revenue, and their reports never show remaining hours.
-const addVolunteer = () => {
+const addVolunteer = async () => {
   const name = document.getElementById('vol-new-name').value.trim();
   const email = document.getElementById('vol-new-email').value.trim();
   const phone = document.getElementById('vol-new-phone').value.trim();
@@ -2820,7 +2828,9 @@ const addVolunteer = () => {
   if (!name || !tid) return notify('Fill all required fields', false);
   let code; do { code = genCode(name); } while (students.some(x=>x.code===code));
   students.push({id:uid(),name,email,phone,teacherId:tid,code,hoursBought:0,hoursUsed:0,joinedAt:new Date().toLocaleDateString('en-GB'),isTrial:false,rate:0,currency:'GBP',status:'volunteer'});
-  persist(); notify(name + ' added as volunteer 🤲');
+  const _okV = await persist();
+  if (!_okV) return;
+  notify(name + ' added as volunteer 🤲');
   logAction('Added volunteer student', name);
   ['vol-new-name','vol-new-email','vol-new-phone'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('vol-new-teacher').value = '';
